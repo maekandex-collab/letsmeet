@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap');
+
+* {
+  scrollbar-width: none;
+  box-sizing: border-box;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
+}
+
+body {
+  font-family: "Urbanist", sans-serif;
+  background: #ffffff;
+  color: #12151C;
+  max-width: 600px;
+  margin: 0 auto;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@keyframes floatHeart {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { transform: translateY(-120px) translateX(30px); opacity: 1; }
+  100% { transform: translateY(-180px) translateX(60px); opacity: 0; }
+}
+
+@keyframes fadeOutLoader {
+  0%   { opacity: 1; pointer-events: all; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+@layer components {
+  /* Mobile shell — centered, max 600px */
+  .mobile-shell {
+    @apply max-w-mobile mx-auto min-h-screen bg-white relative overflow-x-hidden;
+  }
+  /* Horizontal screen padding */
+  .px-screen {
+    @apply px-4 sm:px-5;
+  }
+  /* Standard full-width primary button */
+  .btn-primary {
+    @apply w-full py-3.5 px-8 rounded-xl bg-primary text-white font-bold text-lg leading-6 text-center transition-opacity hover:opacity-90 active:opacity-75;
+  }
+  /* Outline/secondary button */
+  .btn-secondary {
+    @apply w-full py-3.5 px-8 rounded-xl bg-primary-light text-primary font-bold text-lg leading-6 text-center transition-opacity hover:opacity-90 active:opacity-75;
+  }
+  /* Accent outline button (sign in) */
+  .btn-accent-outline {
+    @apply w-full py-3.5 px-8 rounded-xl border-2 border-accent text-accent font-bold text-lg leading-6 text-center bg-transparent transition-opacity hover:opacity-90 active:opacity-75;
+  }
+  /* Input field wrapper */
+  .input-wrapper {
+    @apply flex items-center relative rounded-3xl border-2 border-border bg-border overflow-hidden;
+  }
+  /* Input field */
+  .input-field {
+    @apply w-full py-3.5 pl-14 pr-5 text-base font-medium text-dark-alt outline-none bg-transparent border-none placeholder-muted/60;
+  }
+  /* Input icon container */
+  .input-icon {
+    @apply absolute left-0 top-0 w-12 h-12 flex items-center justify-center rounded-full border-2 border-border bg-border flex-shrink-0;
+  }
+  /* Label above input */
+  .input-label {
+    @apply block text-xs font-semibold text-dark-alt uppercase tracking-wide mb-2;
+  }
+  /* Input group spacing */
+  .input-group {
+    @apply mb-5;
+  }
+  /* Screen title */
+  .screen-title {
+    @apply text-[28px] sm:text-3xl font-medium text-dark leading-tight;
+  }
+  /* Screen subtitle */
+  .screen-subtitle {
+    @apply text-base font-normal text-muted leading-6 mt-3;
+  }
+  /* Fixed bottom action bar */
+  .bottom-bar {
+    @apply fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 pb-6 pt-3 flex gap-4 items-center z-50;
+  }
+  /* App header */
+  .app-header {
+    @apply fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 py-3 flex items-center justify-between z-50 shadow-header;
+  }
+  /* Bottom nav tab */
+  .tab-item {
+    @apply flex flex-col items-center gap-1 flex-1 py-2 text-muted transition-colors;
+  }
+  .tab-item.active {
+    @apply text-primary;
+  }
+  /* Settings row */
+  .settings-row {
+    @apply flex items-center justify-between py-4 border-b border-border last:border-b-0;
+  }
+  .settings-icon-box {
+    @apply w-10 h-10 rounded-xl bg-border flex items-center justify-center flex-shrink-0;
+  }
+  /* Social auth button */
+  .social-btn {
+    @apply flex items-center relative rounded-[30px] border-2 border-border mb-4;
+  }
+  .social-btn-icon {
+    @apply absolute left-0 top-[-1px] w-12 h-12 rounded-full border-2 border-border bg-border flex items-center justify-center flex-shrink-0;
+  }
+}
