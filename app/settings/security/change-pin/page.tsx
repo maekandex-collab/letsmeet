@@ -8,12 +8,12 @@ type Step = "current" | "new" | "confirm";
 const STEP_CONFIG: Record<Step, { title: string; subtitle: string; label: string }> = {
   current: {
     title: "Enter Current PIN",
-    subtitle: "Enter your existing 4-digit PIN to continue",
+    subtitle: "Enter your existing 6-digit PIN to continue",
     label: "Current PIN",
   },
   new: {
     title: "Create New PIN",
-    subtitle: "Choose a new 4-digit PIN for your account",
+    subtitle: "Choose a new 6-digit PIN for your account",
     label: "New PIN",
   },
   confirm: {
@@ -28,7 +28,7 @@ const STEPS: Step[] = ["current", "new", "confirm"];
 function PinDots({ value }: { value: string }) {
   return (
     <div className="flex gap-4 justify-center my-8">
-      {[0, 1, 2, 3].map((i) => (
+      {[0, 1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
           className={`w-4 h-4 rounded-full transition-all duration-150 ${
@@ -52,11 +52,11 @@ export default function ChangePinPage() {
   const currentPin = pins[step];
 
   function handleInput(val: string) {
-    const numeric = val.replace(/\D/g, "").slice(0, 4);
+    const numeric = val.replace(/\D/g, "").slice(0, 6);
     setError("");
     setPins((p) => ({ ...p, [step]: numeric }));
 
-    if (numeric.length === 4) {
+    if (numeric.length === 6) {
       setTimeout(() => advance(numeric), 120);
     }
   }
@@ -138,7 +138,7 @@ export default function ChangePinPage() {
               ref={inputRef}
               type="password"
               inputMode="numeric"
-              maxLength={4}
+              maxLength={6}
               value={currentPin}
               onChange={(e) => handleInput(e.target.value)}
               className="opacity-0 absolute pointer-events-none"
@@ -152,7 +152,7 @@ export default function ChangePinPage() {
                   <button
                     key={n}
                     onClick={() => handleInput(currentPin + n)}
-                    disabled={currentPin.length >= 4}
+                    disabled={currentPin.length >= 6}
                     className="h-16 rounded-2xl bg-[#F5F5F5] text-xl font-bold text-dark active:bg-primary active:text-white transition-colors disabled:opacity-40"
                   >
                     {n}
@@ -162,7 +162,7 @@ export default function ChangePinPage() {
                 <div />
                 <button
                   onClick={() => handleInput(currentPin + "0")}
-                  disabled={currentPin.length >= 4}
+                  disabled={currentPin.length >= 6}
                   className="h-16 rounded-2xl bg-[#F5F5F5] text-xl font-bold text-dark active:bg-primary active:text-white transition-colors disabled:opacity-40"
                 >
                   0

@@ -38,8 +38,8 @@ export default function SignInPage() {
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={4}
-              placeholder="4-digit PIN"
+              maxLength={6}
+              placeholder="6-digit PIN"
               className="input-field"
               autoComplete="current-password"
             />

@@ -26,7 +26,7 @@ export default function SecurityPage() {
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-dark">Change PIN</p>
-              <p className="text-xs text-muted mt-0.5">Update your 4-digit PIN</p>
+              <p className="text-xs text-muted mt-0.5">Update your 6-digit PIN</p>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M9 18L15 12L9 6" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

@@ -8,6 +8,26 @@ import { InputField } from "@/components/FormFields";
 export default function SignUpPage() {
   const router = useRouter();
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinError, setPinError] = useState("");
+
+  const pinLockIcon = (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="11" width="18" height="11" rx="2" stroke="#616568" strokeWidth="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#616568" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+
+  function handleSubmit() {
+    if (pin !== confirmPin) {
+      setPinError("PINs do not match. Please try again.");
+      return;
+    }
+    setPinError("");
+    router.push("/setup");
+  }
+
+  const isValid = pin.length === 6 && confirmPin.length === 6;
 
   return (
     <div className="mobile-shell flex flex-col min-h-screen">
@@ -45,30 +65,65 @@ export default function SignUpPage() {
           }
         />
 
-        {/* PIN field */}
+        {/* Date of Birth */}
         <div className="input-group">
-          <label htmlFor="pin" className="input-label">Create a 4-digit PIN</label>
+          <label htmlFor="dob" className="input-label">Date of Birth</label>
           <div className="input-wrapper">
             <span className="input-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <rect x="3" y="11" width="18" height="11" rx="2" stroke="#616568" strokeWidth="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#616568" strokeWidth="2" strokeLinecap="round" />
+                <rect x="3" y="4" width="18" height="18" rx="2" stroke="#616568" strokeWidth="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" stroke="#616568" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </span>
+            <input
+              id="dob"
+              type="date"
+              name="dob"
+              className="input-field"
+            />
+          </div>
+        </div>
+
+        {/* PIN field */}
+        <div className="input-group">
+          <label htmlFor="pin" className="input-label">Create a 6-digit PIN</label>
+          <div className="input-wrapper">
+            <span className="input-icon">{pinLockIcon}</span>
             <input
               id="pin"
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={4}
+              maxLength={6}
               value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="4-digit PIN"
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="6-digit PIN"
               className="input-field"
               autoComplete="new-password"
             />
           </div>
-          <p className="text-xs text-muted mt-1.5">Must be exactly 4 numbers. Used to secure your account.</p>
+          <p className="text-xs text-muted mt-1.5">Must be exactly 6 numbers. Used to secure your account.</p>
+        </div>
+
+        {/* Confirm PIN field */}
+        <div className="input-group">
+          <label htmlFor="confirm-pin" className="input-label">Confirm PIN</label>
+          <div className="input-wrapper">
+            <span className="input-icon">{pinLockIcon}</span>
+            <input
+              id="confirm-pin"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={confirmPin}
+              onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setPinError(""); }}
+              placeholder="Re-enter 6-digit PIN"
+              className="input-field"
+              autoComplete="new-password"
+            />
+          </div>
+          {pinError && <p className="text-xs text-red-500 mt-1.5">{pinError}</p>}
         </div>
 
         <label className="flex items-start gap-3 mt-5 cursor-pointer">
@@ -89,11 +144,11 @@ export default function SignUpPage() {
 
       <div className="bottom-bar">
         <button
-          onClick={() => router.push("/setup")}
-          disabled={pin.length < 4}
+          onClick={handleSubmit}
+          disabled={!isValid}
           className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Create Account
+          Sign Up
         </button>
       </div>
     </div>
