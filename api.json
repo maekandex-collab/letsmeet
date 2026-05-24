@@ -1,0 +1,861 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+      "title": "NinjaAPI",
+      "version": "1.0.0",
+      "description": ""
+    },
+    "paths": {
+      "/api/mtn_ussd/": {
+        "post": {
+          "operationId": "ussd_services_ussd_vas_mtn_ussd_webhook",
+          "summary": "Mtn Ussd Webhook",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Internal Server Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "USSD MENU"
+          ]
+        }
+      },
+      "/api/mtn/subcription/webhook/": {
+        "post": {
+          "operationId": "ussd_services_ussd_vas_mtn_ussd_subscription_webhook",
+          "summary": "Mtn Ussd Subscription Webhook",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          },
+          "tags": [
+            "USSD MENU"
+          ]
+        }
+      },
+      "/api/mtn/sms/webhook/": {
+        "post": {
+          "operationId": "ussd_services_ussd_vas_mtn_sms_webhook",
+          "summary": "Mtn Sms Webhook",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          },
+          "tags": [
+            "USSD MENU"
+          ]
+        }
+      },
+      "/api/mtn/unsub/webhook/": {
+        "post": {
+          "operationId": "ussd_services_ussd_vas_mtn_unsub_webhook",
+          "summary": "Mtn Unsub Webhook",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          },
+          "tags": [
+            "USSD MENU"
+          ]
+        }
+      },
+      "/api/prediction/create/user/": {
+        "post": {
+          "operationId": "ussd_services_ussd_vas_create_user_prediction",
+          "summary": "Create User Prediction",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/prediction_user"
+                }
+              }
+            },
+            "required": true
+          }
+        }
+      },
+      "/api/prediction/login/user/": {
+        "post": {
+          "operationId": "ussd_services_ussd_vas_login_user_prediction",
+          "summary": "Login User Prediction",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response",
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/prediction_login"
+                }
+              }
+            },
+            "required": true
+          }
+        }
+      },
+      "/api/prediction/general/": {
+        "get": {
+          "operationId": "ussd_services_ussd_vas_get_general_prediction",
+          "summary": "Get General Prediction",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "search",
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Search"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "default": 1,
+                "minimum": 1,
+                "title": "Page",
+                "type": "integer"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page_size",
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Page Size"
+              },
+              "required": false
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PagedPredictionPaginationSchema"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ]
+        }
+      },
+      "/api/prediction/general/today/": {
+        "get": {
+          "operationId": "ussd_services_ussd_vas_get_general_prediction_today",
+          "summary": "Get General Prediction Today",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "search",
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Search"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "default": 1,
+                "minimum": 1,
+                "title": "Page",
+                "type": "integer"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page_size",
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Page Size"
+              },
+              "required": false
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PagedPredictionPaginationUSerSchema"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ],
+          "security": [
+            {
+              "JWTAuth": []
+            }
+          ]
+        }
+      },
+      "/api/prediction/general/vip/": {
+        "get": {
+          "operationId": "ussd_services_ussd_vas_get_general_prediction_vip",
+          "summary": "Get General Prediction Vip",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "search",
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Search"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "default": 1,
+                "minimum": 1,
+                "title": "Page",
+                "type": "integer"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page_size",
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Page Size"
+              },
+              "required": false
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PagedPredictionVIPSchema"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ],
+          "security": [
+            {
+              "JWTAuth": []
+            }
+          ]
+        }
+      },
+      "/api/prediction/accumulator/": {
+        "get": {
+          "operationId": "ussd_services_ussd_vas_get_general_prediction_accumulator",
+          "summary": "Get General Prediction Accumulator",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "search",
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Search"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "default": 1,
+                "minimum": 1,
+                "title": "Page",
+                "type": "integer"
+              },
+              "required": false
+            },
+            {
+              "in": "query",
+              "name": "page_size",
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Page Size"
+              },
+              "required": false
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PagedPredictionVIPSchema"
+                  }
+                }
+              }
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ],
+          "security": [
+            {
+              "JWTAuth": []
+            }
+          ]
+        }
+      },
+      "/api/prediction/bet_of_day/": {
+        "get": {
+          "operationId": "ussd_services_ussd_vas_get_bet_of_day",
+          "summary": "Get Bet Of Day",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          },
+          "tags": [
+            "PREDICTION"
+          ]
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "prediction_user": {
+          "properties": {
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "pin": {
+              "title": "Pin",
+              "type": "string"
+            },
+            "confirm_pin": {
+              "title": "Confirm Pin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "number",
+            "pin",
+            "confirm_pin"
+          ],
+          "title": "prediction_user",
+          "type": "object"
+        },
+        "prediction_login": {
+          "properties": {
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "pin": {
+              "title": "Pin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "number",
+            "pin"
+          ],
+          "title": "prediction_login",
+          "type": "object"
+        },
+        "Input": {
+          "properties": {
+            "page": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "page_size": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Size"
+            }
+          },
+          "title": "Input",
+          "type": "object"
+        },
+        "PagedPredictionPaginationSchema": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/PredictionPaginationSchema"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "count"
+          ],
+          "title": "PagedPredictionPaginationSchema",
+          "type": "object"
+        },
+        "PredictionPaginationSchema": {
+          "properties": {
+            "game_id": {
+              "title": "Game Id",
+              "type": "string"
+            },
+            "home_team": {
+              "title": "Home Team",
+              "type": "string"
+            },
+            "away_team": {
+              "title": "Away Team",
+              "type": "string"
+            },
+            "prediction": {
+              "title": "Prediction",
+              "type": "string"
+            },
+            "is_finished": {
+              "title": "Is Finished",
+              "type": "boolean"
+            },
+            "date": {
+              "format": "date-time",
+              "title": "Date",
+              "type": "string"
+            },
+            "date_created": {
+              "format": "date-time",
+              "title": "Date Created",
+              "type": "string"
+            },
+            "date_time": {
+              "format": "date",
+              "title": "Date Time",
+              "type": "string"
+            },
+            "prediction_probability": {
+              "title": "Prediction Probability",
+              "type": "number"
+            },
+            "is_prediction_correct": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Prediction Correct"
+            },
+            "result_score": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result Score"
+            }
+          },
+          "required": [
+            "game_id",
+            "home_team",
+            "away_team",
+            "prediction",
+            "is_finished",
+            "date",
+            "date_created",
+            "date_time",
+            "prediction_probability",
+            "is_prediction_correct",
+            "result_score"
+          ],
+          "title": "PredictionPaginationSchema",
+          "type": "object"
+        },
+        "PagedPredictionPaginationUSerSchema": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/PredictionPaginationUSerSchema"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "count"
+          ],
+          "title": "PagedPredictionPaginationUSerSchema",
+          "type": "object"
+        },
+        "PredictionPaginationUSerSchema": {
+          "properties": {
+            "game_id": {
+              "title": "Game Id",
+              "type": "string"
+            },
+            "home_team": {
+              "title": "Home Team",
+              "type": "string"
+            },
+            "away_team": {
+              "title": "Away Team",
+              "type": "string"
+            },
+            "prediction": {
+              "title": "Prediction",
+              "type": "string"
+            },
+            "is_finished": {
+              "title": "Is Finished",
+              "type": "boolean"
+            },
+            "date": {
+              "format": "date-time",
+              "title": "Date",
+              "type": "string"
+            },
+            "date_created": {
+              "format": "date-time",
+              "title": "Date Created",
+              "type": "string"
+            },
+            "date_time": {
+              "format": "date",
+              "title": "Date Time",
+              "type": "string"
+            },
+            "prediction_probability": {
+              "title": "Prediction Probability",
+              "type": "number"
+            }
+          },
+          "required": [
+            "game_id",
+            "home_team",
+            "away_team",
+            "prediction",
+            "is_finished",
+            "date",
+            "date_created",
+            "date_time",
+            "prediction_probability"
+          ],
+          "title": "PredictionPaginationUSerSchema",
+          "type": "object"
+        },
+        "PagedPredictionVIPSchema": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/PredictionVIPSchema"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "count"
+          ],
+          "title": "PagedPredictionVIPSchema",
+          "type": "object"
+        },
+        "PredictionVIPSchema": {
+          "properties": {
+            "match_id": {
+              "title": "Match Id",
+              "type": "string"
+            },
+            "competition_name": {
+              "title": "Competition Name",
+              "type": "string"
+            },
+            "competition_country": {
+              "title": "Competition Country",
+              "type": "string"
+            },
+            "kickoff": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kickoff"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "home_name": {
+              "title": "Home Name",
+              "type": "string"
+            },
+            "home_logo": {
+              "anyOf": [
+                {
+                  "format": "uri",
+                  "maxLength": 2083,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Logo"
+            },
+            "away_name": {
+              "title": "Away Name",
+              "type": "string"
+            },
+            "away_logo": {
+              "anyOf": [
+                {
+                  "format": "uri",
+                  "maxLength": 2083,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Away Logo"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "probability": {
+              "title": "Probability",
+              "type": "number"
+            },
+            "odds": {
+              "title": "Odds",
+              "type": "number"
+            }
+          },
+          "required": [
+            "match_id",
+            "competition_name",
+            "competition_country",
+            "status",
+            "home_name",
+            "away_name",
+            "label",
+            "probability",
+            "odds"
+          ],
+          "title": "PredictionVIPSchema",
+          "type": "object"
+        }
+      },
+      "securitySchemes": {
+        "JWTAuth": {
+          "type": "http",
+          "scheme": "bearer"
+        }
+      }
+    },
+    "servers": []
+  }
