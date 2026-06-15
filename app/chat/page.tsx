@@ -1,34 +1,64 @@
 "use client";
-import { useState, useRef } from "react";
+import { Suspense, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { sendMessage, extractError } from "@/lib/letsmeet";
 
-const initialMessages = [
-  { id: 1, from: "them", text: "Hey! How are you doing?", time: "2:30 PM" },
-  { id: 2, from: "me", text: "I'm great! How about you?", time: "2:31 PM" },
-  { id: 3, from: "them", text: "Doing really well, thanks! I saw you're into hiking too 🏔️", time: "2:32 PM" },
-  { id: 4, from: "me", text: "Yes! Love it. Have you been to any good trails recently?", time: "2:33 PM" },
-  { id: 5, from: "them", text: "Actually yes! There's a great one near Prospect Park, we should check it out sometime 😊", time: "2:45 PM" },
-];
+interface ChatMessage {
+  id: number;
+  from: "me" | "them";
+  text: string;
+  time: string;
+}
 
-export default function ChatPage() {
-  const [messages, setMessages] = useState(initialMessages);
+function nowTime() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function ChatContent() {
+  const params = useSearchParams();
+  const name = params.get("name") ?? "Chat";
+  const roomParam = params.get("room");
+  const roomId = roomParam ? Number(roomParam) : null;
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), from: "me", text: input.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
-    ]);
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || sending) return;
+    setError("");
+
+    if (roomId === null || Number.isNaN(roomId)) {
+      setError("No chat room available for this match yet.");
+      return;
+    }
+
+    const optimistic: ChatMessage = { id: Date.now(), from: "me", text, time: nowTime() };
+    setMessages((prev) => [...prev, optimistic]);
     setInput("");
+    setSending(true);
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-  };
+
+    try {
+      const res = await sendMessage(text, roomId);
+      if (!res.ok || res.data?.error) {
+        setError(extractError(res.data, "Message failed to send."));
+      }
+    } catch {
+      setError("Network error. Message not sent.");
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <div className="mobile-shell flex flex-col h-screen">
-      {/* Chat header */}
+      {/* Header */}
       <div className="app-header flex items-center gap-3 px-4">
         <Link href="/messages" className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -42,18 +72,17 @@ export default function ChatPage() {
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-dark leading-tight truncate">Sophiya Calzoni</p>
-          <p className="text-xs text-green-500 font-medium">Online</p>
+          <p className="text-base font-bold text-dark leading-tight truncate">{name}</p>
+          <p className="text-xs text-muted font-medium">Matched</p>
         </div>
 
-        {/* 3-dot menu */}
         <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="5"  r="1.5" fill="#12151C" />
+              <circle cx="12" cy="5" r="1.5" fill="#12151C" />
               <circle cx="12" cy="12" r="1.5" fill="#12151C" />
               <circle cx="12" cy="19" r="1.5" fill="#12151C" />
             </svg>
@@ -61,9 +90,7 @@ export default function ChatPage() {
 
           {menuOpen && (
             <>
-              {/* Backdrop */}
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              {/* Dropdown */}
               <div className="absolute right-0 top-11 z-20 bg-white rounded-2xl shadow-card border border-border overflow-hidden min-w-[160px]">
                 <button
                   onClick={() => { setMessages([]); setMenuOpen(false); }}
@@ -82,13 +109,16 @@ export default function ChatPage() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 pt-20 pb-4 space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center text-sm text-muted mt-10">
+            Say hi to {name}! 👋
+          </div>
+        )}
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.from === "me" ? "justify-end" : "justify-start"}`}>
             <div
               className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-5 ${
-                msg.from === "me"
-                  ? "bg-primary text-white rounded-br-md"
-                  : "bg-border text-dark rounded-bl-md"
+                msg.from === "me" ? "bg-primary text-white rounded-br-md" : "bg-border text-dark rounded-bl-md"
               }`}
             >
               <p>{msg.text}</p>
@@ -99,27 +129,24 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
+      {error && (
+        <p className="px-4 pb-1 text-xs text-red-500">{error}</p>
+      )}
+
+      {/* Input */}
       <div className="px-4 py-3 bg-white border-t border-border flex items-center gap-2 pb-safe">
-        <button className="w-9 h-9 flex items-center justify-center text-muted hover:text-primary transition-colors">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <line x1="9" y1="9" x2="9.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <line x1="15" y1="9" x2="15.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="Type a message..."
           className="flex-1 h-11 px-4 rounded-2xl bg-border text-sm text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
         <button
-          onClick={sendMessage}
-          className="w-10 h-10 rounded-full bg-primary flex items-center justify-center hover:opacity-90 transition-opacity"
+          onClick={handleSend}
+          disabled={sending}
+          className="w-10 h-10 rounded-full bg-primary flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M22 2L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -128,5 +155,13 @@ export default function ChatPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="mobile-shell h-screen flex items-center justify-center text-muted">Loading…</div>}>
+      <ChatContent />
+    </Suspense>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { getUser, clearSession } from "@/lib/letsmeet";
 
 const SETTINGS = [
   {
@@ -80,6 +81,16 @@ const SETTINGS = [
 
 export default function AccountPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+
+  useEffect(() => {
+    const user = getUser();
+    if (user) {
+      setName(user.fullName ?? "");
+      setPhone(user.phone ?? "");
+    }
+  }, []);
 
   return (
     <div className="mobile-shell flex flex-col min-h-screen bg-white">
@@ -127,7 +138,8 @@ export default function AccountPage() {
               </svg>
               <input
                 type="text"
-                defaultValue="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Your Name"
                 className="flex-1 bg-transparent text-sm font-medium text-dark placeholder:text-muted outline-none"
               />
@@ -143,7 +155,7 @@ export default function AccountPage() {
               </svg>
               <input
                 type="tel"
-                value="+1 (555) 000-0000"
+                value={phone || "—"}
                 readOnly
                 className="flex-1 bg-transparent text-sm font-medium text-dark outline-none cursor-not-allowed"
               />
@@ -252,7 +264,7 @@ export default function AccountPage() {
               {/* Logout */}
               <Link
                 href="/get-started"
-                onClick={() => setDrawerOpen(false)}
+                onClick={() => { clearSession(); setDrawerOpen(false); }}
                 className="flex items-center gap-4 px-5 py-4 hover:bg-red-50 transition-colors"
               >
                 <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">

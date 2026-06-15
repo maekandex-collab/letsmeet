@@ -11,6 +11,10 @@ interface InputFieldProps {
   rightIcon?: React.ReactNode;
   className?: string;
   defaultValue?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  inputMode?: "text" | "numeric" | "tel" | "email" | "search" | "url" | "decimal" | "none";
+  maxLength?: number;
 }
 
 export function InputField({
@@ -24,6 +28,10 @@ export function InputField({
   rightIcon,
   className = "",
   defaultValue,
+  value,
+  onChange,
+  inputMode,
+  maxLength,
 }: InputFieldProps) {
   return (
     <div className={`input-group ${className}`}>
@@ -41,6 +49,10 @@ export function InputField({
           placeholder={placeholder}
           autoComplete={autoComplete}
           defaultValue={defaultValue}
+          value={value}
+          onChange={onChange}
+          inputMode={inputMode}
+          maxLength={maxLength}
           className={`input-field ${icon ? "pl-14" : "pl-4"} ${rightIcon ? "pr-12" : "pr-4"}`}
         />
         {rightIcon && (
@@ -59,6 +71,8 @@ interface SelectFieldProps {
   options: { value: string; label: string }[];
   placeholder?: string;
   className?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 }
 
 export function SelectField({
@@ -69,6 +83,8 @@ export function SelectField({
   options,
   placeholder,
   className = "",
+  value,
+  onChange,
 }: SelectFieldProps) {
   return (
     <div className={`input-group ${className}`}>
@@ -82,7 +98,7 @@ export function SelectField({
         <select
           id={id}
           name={name}
-          defaultValue=""
+          {...(value !== undefined ? { value, onChange } : { defaultValue: "" })}
           className={`input-field appearance-none cursor-pointer ${icon ? "pl-14" : "pl-4"} pr-10`}
         >
           {placeholder && (

@@ -41,6 +41,51 @@ input[type=number]::-webkit-inner-spin-button {
   80%  { opacity: 1; }
   100% { opacity: 0; pointer-events: none; }
 }
+
+/* ── Splash screen animations ─────────────────────────────────── */
+@keyframes splashBlob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -40px) scale(1.12); }
+  66%      { transform: translate(-25px, 25px) scale(0.92); }
+}
+
+@keyframes splashLogoIn {
+  0%   { transform: scale(0.6) translateY(20px); opacity: 0; }
+  60%  { transform: scale(1.06) translateY(0); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes splashGlow {
+  0%, 100% { box-shadow: 0 0 40px 6px rgba(247,89,245,0.45), 0 0 0 0 rgba(247,89,245,0.35); }
+  50%      { box-shadow: 0 0 70px 16px rgba(247,89,245,0.65), 0 0 0 14px rgba(247,89,245,0); }
+}
+
+@keyframes splashHeartbeat {
+  0%, 100% { transform: scale(1); }
+  15%      { transform: scale(1.18); }
+  30%      { transform: scale(1); }
+  45%      { transform: scale(1.12); }
+  60%      { transform: scale(1); }
+}
+
+@keyframes splashRiseUp {
+  0%   { transform: translateY(24px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes splashFloatHeart {
+  0%   { transform: translateY(0) rotate(0deg) scale(var(--s, 1)); opacity: 0; }
+  10%  { opacity: var(--o, 0.5); }
+  90%  { opacity: var(--o, 0.5); }
+  100% { transform: translateY(-115vh) rotate(40deg) scale(var(--s, 1)); opacity: 0; }
+}
+
+.animate-splash-blob { animation: splashBlob 12s ease-in-out infinite; }
+.animate-splash-logo-in { animation: splashLogoIn 0.9s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-splash-glow { animation: splashGlow 2.8s ease-in-out infinite; }
+.animate-splash-heartbeat { animation: splashHeartbeat 2.8s ease-in-out infinite; }
+.animate-splash-rise { animation: splashRiseUp 0.7s ease-out both; }
+.animate-splash-float-heart { animation: splashFloatHeart linear infinite; }
 input[type=number] {
   -moz-appearance: textfield;
 }

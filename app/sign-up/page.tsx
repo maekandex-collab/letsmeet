@@ -4,12 +4,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
+import { createUser, loginUser, extractError, setSession, normalizePhone } from "@/lib/letsmeet";
+import { clearDraft, saveDraft } from "@/lib/profileDraft";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [dob, setDob] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-  const [pinError, setPinError] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const pinLockIcon = (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -18,16 +25,59 @@ export default function SignUpPage() {
     </svg>
   );
 
-  function handleSubmit() {
-    if (pin !== confirmPin) {
-      setPinError("PINs do not match. Please try again.");
-      return;
+  async function handleSubmit() {
+    setError("");
+    if (!name.trim()) return setError("Please enter your full name.");
+    if (phone.replace(/\D/g, "").length < 10) return setError("Please enter a valid phone number.");
+    if (!dob) return setError("Please select your date of birth.");
+    if (pin.length !== 6) return setError("PIN must be exactly 6 digits.");
+    if (pin !== confirmPin) return setError("PINs do not match. Please try again.");
+    if (!agreed) return setError("Please accept the Privacy Policy & Terms of Service.");
+
+    const number = normalizePhone(phone);
+    setLoading(true);
+    try {
+      const created = await createUser({
+        phone_number: number,
+        full_name: name.trim(),
+        date_of_birth: dob,
+        pin,
+        confirm_pin: confirmPin,
+      });
+      if (!created.ok) {
+        setError(extractError(created.data, "Could not create your account."));
+        return;
+      }
+
+      const login = await loginUser(number, pin);
+      if (!login.ok || !login.data?.token) {
+        setError(extractError(login.data, "Account created, but sign-in failed. Try signing in."));
+        return;
+      }
+
+      clearDraft();
+      setSession(login.data.token, {
+        userId: login.data.user_id,
+        fullName: name.trim(),
+        phone: number,
+        profileCompleted: login.data.profile_completed,
+      });
+      saveDraft({});
+      router.push("/setup");
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    setPinError("");
-    router.push("/setup");
   }
 
-  const isValid = pin.length === 6 && confirmPin.length === 6;
+  const isValid =
+    name.trim() !== "" &&
+    phone.replace(/\D/g, "").length >= 10 &&
+    dob !== "" &&
+    pin.length === 6 &&
+    confirmPin.length === 6 &&
+    agreed;
 
   return (
     <div className="mobile-shell flex flex-col min-h-screen">
@@ -43,6 +93,8 @@ export default function SignUpPage() {
           name="name"
           placeholder="Your Full Name"
           autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="8" r="4" stroke="#616568" strokeWidth="2" />
@@ -56,8 +108,10 @@ export default function SignUpPage() {
           id="phone"
           type="tel"
           name="phone"
-          placeholder="e.g. +1 234 567 8900"
+          placeholder="e.g. 08012345678"
           autoComplete="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.63 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.63a16 16 0 0 0 6 6l.95-.97a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -79,6 +133,8 @@ export default function SignUpPage() {
               id="dob"
               type="date"
               name="dob"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
               className="input-field"
             />
           </div>
@@ -117,17 +173,21 @@ export default function SignUpPage() {
               pattern="[0-9]*"
               maxLength={6}
               value={confirmPin}
-              onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setPinError(""); }}
+              onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
               placeholder="Re-enter 6-digit PIN"
               className="input-field"
               autoComplete="new-password"
             />
           </div>
-          {pinError && <p className="text-xs text-red-500 mt-1.5">{pinError}</p>}
         </div>
 
         <label className="flex items-start gap-3 mt-5 cursor-pointer">
-          <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary flex-shrink-0" />
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="w-4 h-4 mt-0.5 accent-primary flex-shrink-0"
+          />
           <span className="text-sm text-muted leading-5">
             I agree to the{" "}
             <Link href="/settings/privacy" className="text-dark font-semibold underline">Privacy Policy</Link>
@@ -135,6 +195,8 @@ export default function SignUpPage() {
             <Link href="/settings/privacy" className="text-dark font-semibold underline">Terms of Service</Link>
           </span>
         </label>
+
+        {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
 
         <p className="text-sm text-center text-muted mt-5">
           Already have an account?{" "}
@@ -145,10 +207,10 @@ export default function SignUpPage() {
       <div className="bottom-bar">
         <button
           onClick={handleSubmit}
-          disabled={!isValid}
+          disabled={!isValid || loading}
           className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Sign Up
+          {loading ? "Creating account..." : "Sign Up"}
         </button>
       </div>
     </div>

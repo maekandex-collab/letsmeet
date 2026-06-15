@@ -1,8 +1,9 @@
 ﻿"use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
+import { saveDraft } from "@/lib/profileDraft";
 
 // ── Geographic data ────────────────────────────────────────────────────────────
 
@@ -126,6 +127,7 @@ function EyeIcon({ open }: { open: boolean }) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function LocationPage() {
+  const router = useRouter();
   const [country, setCountry] = useState("");
   const [state, setState] = useState("");
   const [locationPublic, setLocationPublic] = useState(true);
@@ -137,6 +139,21 @@ export default function LocationPage() {
   function handleCountryChange(code: string) {
     setCountry(code);
     setState("");
+  }
+
+  function handleContinue() {
+    if (selectedCountry) {
+      saveDraft({
+        location: `${state}, ${selectedCountry.name}`,
+        show_location: locationPublic,
+      });
+    }
+    router.push("/profile-setup");
+  }
+
+  function handleSkip() {
+    saveDraft({ show_location: locationPublic });
+    router.push("/profile-setup");
   }
 
   return (
@@ -254,15 +271,16 @@ export default function LocationPage() {
       </div>
 
       <div className="bottom-bar flex-col gap-3">
-        <Link
-          href={canContinue ? "/profile-setup" : "#"}
+        <button
+          onClick={handleContinue}
+          disabled={!canContinue}
           className={`btn-primary text-center ${!canContinue ? "opacity-40 pointer-events-none" : ""}`}
         >
           Continue
-        </Link>
-        <Link href="/profile-setup" className="btn-secondary text-center">
+        </button>
+        <button onClick={handleSkip} className="btn-secondary text-center">
           Skip for now
-        </Link>
+        </button>
       </div>
     </div>
   );

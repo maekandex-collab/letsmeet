@@ -1,17 +1,32 @@
+"use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { getMatchedList, mediaUrl, type ProfileCard } from "@/lib/letsmeet";
 
-const conversations = [
-  { id: 1, name: "Sophiya Calzoni", msg: "Hey! How are you doing?", time: "2:45 PM", unread: 2, bg: "#E8D5F5", online: true },
-  { id: 2, name: "Isabella Uzo", msg: "That sounds so fun!", time: "1:30 PM", unread: 0, bg: "#D5E8F5", online: true },
-  { id: 3, name: "Elizabeth Maria", msg: "Let me know when you're free", time: "12:00 PM", unread: 5, bg: "#F5E8D5", online: false },
-  { id: 4, name: "Tina Schaefer", msg: "I love hiking too 🏔️", time: "11:15 AM", unread: 0, bg: "#D5F5E8", online: true },
-  { id: 5, name: "Maria Panola", msg: "Thanks for the recommendation!", time: "10:00 AM", unread: 0, bg: "#F5D5E8", online: false },
-  { id: 6, name: "Janet Wilson", msg: "See you there!", time: "Yesterday", unread: 0, bg: "#E8D5D5", online: false },
-];
+function normalize(data: ProfileCard[] | ProfileCard | null | undefined): ProfileCard[] {
+  if (!data) return [];
+  return Array.isArray(data) ? data : [data];
+}
 
 export default function MessagesPage() {
+  const [matches, setMatches] = useState<ProfileCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const res = await getMatchedList();
+      if (res.ok) setMatches(normalize(res.data));
+      setLoading(false);
+    })();
+  }, []);
+
+  const filtered = matches.filter((m) =>
+    m.name.toLowerCase().includes(query.toLowerCase())
+  );
+
   return (
     <div className="mobile-shell flex flex-col min-h-screen">
       <LogoHeader />
@@ -27,42 +42,61 @@ export default function MessagesPage() {
             </span>
             <input
               type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Search messages..."
               className="w-full h-12 pl-11 pr-4 rounded-2xl bg-border text-sm font-medium text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
         </div>
 
-        {/* Conversations */}
-        <div className="flex flex-col">
-          {conversations.map((c) => (
-            <Link key={c.id} href="/chat" className="flex items-center gap-4 px-5 py-4 hover:bg-border/40 transition-colors border-b border-border last:border-b-0">
-              <div className="relative flex-shrink-0">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: c.bg }}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="8" r="4" stroke="#F759F5" strokeWidth="2" />
-                    <path d="M4 20C4 17.79 7.58 16 12 16C16.42 16 20 17.79 20 20" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </div>
-                {c.online && (
-                  <span className="absolute bottom-0.5 right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-white" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <p className="text-base font-bold text-dark truncate">{c.name}</p>
-                  <p className="text-xs text-muted ml-2 flex-shrink-0">{c.time}</p>
-                </div>
-                <p className="text-sm text-muted truncate mt-0.5">{c.msg}</p>
-              </div>
-              {c.unread > 0 && (
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">
-                  {c.unread}
-                </span>
-              )}
-            </Link>
-          ))}
-        </div>
+        {loading ? (
+          <p className="px-5 py-6 text-sm text-muted">Loading conversations…</p>
+        ) : filtered.length === 0 ? (
+          <div className="px-5 py-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center mx-auto mb-3">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#F759F5" strokeWidth="2" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <p className="text-sm text-muted">No conversations yet. Match with someone to start chatting!</p>
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            {filtered.map((c) => {
+              const photo = mediaUrl(c.profile_photo);
+              return (
+                <Link
+                  key={c.user_id}
+                  href={`/chat?id=${encodeURIComponent(c.user_id)}&room=${c.id}&name=${encodeURIComponent(c.name)}`}
+                  className="flex items-center gap-4 px-5 py-4 hover:bg-border/40 transition-colors border-b border-border last:border-b-0"
+                >
+                  <div className="relative flex-shrink-0">
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-primary-light">
+                      {photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={photo} alt={c.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="8" r="4" stroke="#F759F5" strokeWidth="2" />
+                          <path d="M4 20C4 17.79 7.58 16 12 16C16.42 16 20 17.79 20 20" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="text-base font-bold text-dark truncate">{c.name}</p>
+                    </div>
+                    <p className="text-sm text-muted truncate mt-0.5">
+                      {c.location || "Tap to start chatting"}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <BottomNav />

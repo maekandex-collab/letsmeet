@@ -1,8 +1,46 @@
+"use client";
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
+import { loginUser, extractError, setSession, normalizePhone } from "@/lib/letsmeet";
 
 export default function SignInPage() {
+  const router = useRouter();
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSignIn() {
+    setError("");
+    const number = normalizePhone(phone);
+    if (number.length < 12) return setError("Please enter a valid phone number.");
+    if (pin.length < 4) return setError("Please enter your PIN.");
+
+    setLoading(true);
+    try {
+      const login = await loginUser(number, pin);
+      if (!login.ok || !login.data?.token) {
+        setError(extractError(login.data, "Invalid phone number or PIN."));
+        return;
+      }
+      setSession(login.data.token, {
+        userId: login.data.user_id,
+        phone: number,
+        profileCompleted: login.data.profile_completed,
+      });
+      router.push(login.data.profile_completed ? "/home" : "/setup");
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isValid = phone.replace(/\D/g, "").length >= 10 && pin.length >= 4;
+
   return (
     <div className="mobile-shell flex flex-col min-h-screen">
       <BackHeader />
@@ -15,8 +53,10 @@ export default function SignInPage() {
           id="phone"
           type="tel"
           name="phone"
-          placeholder="e.g. +1 234 567 8900"
+          placeholder="e.g. 08012345678"
           autoComplete="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.63 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.63a16 16 0 0 0 6 6l.95-.97a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -39,6 +79,8 @@ export default function SignInPage() {
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={6}
+              value={pin}
+              onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
               placeholder="6-digit PIN"
               className="input-field"
               autoComplete="current-password"
@@ -52,6 +94,8 @@ export default function SignInPage() {
           </Link>
         </div>
 
+        {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
+
         <p className="text-sm text-center text-muted">
           Don&apos;t have an account?{" "}
           <Link href="/sign-up" className="text-primary font-bold">Sign Up</Link>
@@ -59,9 +103,13 @@ export default function SignInPage() {
       </div>
 
       <div className="bottom-bar">
-        <Link href="/home" className="btn-primary">
-          Sign In
-        </Link>
+        <button
+          onClick={handleSignIn}
+          disabled={!isValid || loading}
+          className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {loading ? "Signing in..." : "Sign In"}
+        </button>
       </div>
     </div>
   );
