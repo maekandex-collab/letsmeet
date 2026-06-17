@@ -75,7 +75,7 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex flex-col px-3 sm:px-4 pt-20 pb-24" style={{ height: "100dvh" }}>
+      <div className="flex flex-col px-3 sm:px-4 pt-20 pb-20" style={{ height: "100dvh" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold text-dark">Discover</h2>
@@ -86,7 +86,10 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="relative flex-1 min-h-0 w-full">
+        <div
+          className="relative mx-auto w-full max-w-[430px] shrink-0"
+          style={{ height: "clamp(340px, 56dvh, 520px)" }}
+        >
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center">
               <p className="text-muted text-sm">Finding people near you…</p>
@@ -137,10 +140,14 @@ export default function HomePage() {
                   className="absolute inset-x-0 inset-y-0"
                   style={{ transform, transition, zIndex, willChange: "transform" }}
                 >
-                  <div className="relative rounded-[28px] overflow-hidden h-full bg-black" style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+                  <div className="relative rounded-[28px] overflow-hidden h-full bg-[#151515]" style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
                     {photo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={photo} alt={card.name} className="absolute inset-0 w-full h-full object-contain object-center" />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photo} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-45" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photo} alt={card.name} className="absolute inset-0 w-full h-full object-contain object-center p-1" />
+                      </>
                     ) : (
                       <div className="absolute inset-0 bg-primary-light flex items-center justify-center">
                         <svg width="80" height="80" viewBox="0 0 24 24" fill="none">
