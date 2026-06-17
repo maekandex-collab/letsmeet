@@ -108,7 +108,7 @@ export default function MatchesPage() {
           ) : (
             <div className="grid grid-cols-2 gap-3 px-5">
               {matches.map((m) => (
-                <Link
+              <Link
                   key={m.user_id}
                   href={`/chat?id=${encodeURIComponent(m.user_id)}&room=${m.id}&name=${encodeURIComponent(m.name)}`}
                   className="relative rounded-[22px] overflow-hidden"
@@ -126,10 +126,10 @@ export default function MatchesPage() {
                         <span className="text-white text-[11px] font-medium px-2.5 py-1 rounded-full border border-white/40">{m.location}</span>
                       ) : null}
                     </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                </div>
+              </Link>
+            ))}
+          </div>
           )}
         </section>
       </div>

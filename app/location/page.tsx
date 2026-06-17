@@ -226,7 +226,7 @@ export default function LocationPage() {
             <span className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M6 9L12 15L18 9" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            </svg>
             </span>
           </div>
         </div>
