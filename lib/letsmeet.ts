@@ -3,8 +3,11 @@
 
 const PROXY = "/api/letsmeet";
 
-const MEDIA_BASE =
-  process.env.NEXT_PUBLIC_LETSMEET_BASE_URL ?? "https://mtn.lenhub.net";
+const MEDIA_BASE = (
+  process.env.NEXT_PUBLIC_LETSMEET_BASE_URL ?? "https://mtn.lenhub.net"
+).replace(/\/$/, "");
+
+const MEDIA_PROXY = "/api/letsmeet-media";
 
 // ─── Session storage ──────────────────────────────────────────────────────────
 
@@ -76,9 +79,19 @@ export function normalizePhone(input: string): string {
 
 /** Turns a backend media path (e.g. /media/profile_pics/x.jpg) into a full URL. */
 export function mediaUrl(path?: string | null): string | null {
-  if (!path) return null;
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  return `${MEDIA_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
+  const value = path?.trim();
+  if (!value) return null;
+
+  if (value.startsWith("//")) {
+    return `${MEDIA_PROXY}?url=${encodeURIComponent(`http:${value}`)}`;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return `${MEDIA_PROXY}?url=${encodeURIComponent(value)}`;
+  }
+
+  const normalizedPath = value.startsWith("/") ? value : `/${value}`;
+  return `${MEDIA_PROXY}?url=${encodeURIComponent(`${MEDIA_BASE}${normalizedPath}`)}`;
 }
 
 export function extractError(

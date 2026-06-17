@@ -75,7 +75,7 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex flex-col px-5 pt-20 pb-24" style={{ height: "100dvh" }}>
+      <div className="flex flex-col px-3 sm:px-4 pt-20 pb-24" style={{ height: "100dvh" }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold text-dark">Discover</h2>
@@ -86,7 +86,7 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-h-0 w-full">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center">
               <p className="text-muted text-sm">Finding people near you…</p>
@@ -137,10 +137,10 @@ export default function HomePage() {
                   className="absolute inset-x-0 inset-y-0"
                   style={{ transform, transition, zIndex, willChange: "transform" }}
                 >
-                  <div className="relative rounded-[28px] overflow-hidden h-full" style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+                  <div className="relative rounded-[28px] overflow-hidden h-full bg-black" style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
                     {photo ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={photo} alt={card.name} className="absolute inset-0 w-full h-full object-cover object-top" />
+                      <img src={photo} alt={card.name} className="absolute inset-0 w-full h-full object-contain object-center" />
                     ) : (
                       <div className="absolute inset-0 bg-primary-light flex items-center justify-center">
                         <svg width="80" height="80" viewBox="0 0 24 24" fill="none">
