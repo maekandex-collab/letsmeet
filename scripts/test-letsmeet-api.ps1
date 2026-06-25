@@ -229,6 +229,19 @@ if ($msg.status -eq 200) {
   Write-Result "POST /api/letsmeet/message/send" "FAIL" "$($msg.status) $($msg.body)"
 }
 
+# ── 11. Notification list (backend path typo: notifcation) ───────────────────
+$notifs = Invoke-LetsMeet GET "/api/letsmeet/notifcation/list?page=1" -Token $token
+if ($notifs.status -eq 200) {
+  $notifJson = $notifs.body | ConvertFrom-Json
+  if ($null -ne $notifJson.items) {
+    Write-Result "GET /api/letsmeet/notifcation/list" "PASS" "count=$($notifJson.count) items=$($notifJson.items.Count)"
+  } else {
+    Write-Result "GET /api/letsmeet/notifcation/list" "WARN" "200 but missing items array: $($notifs.body)"
+  }
+} else {
+  Write-Result "GET /api/letsmeet/notifcation/list" "FAIL" "$($notifs.status) $($notifs.body)"
+}
+
 Write-Host "`nSummary: PASS=$pass  WARN=$warn  FAIL=$fail`n" -ForegroundColor Cyan
 Write-Host "Implementation notes:" -ForegroundColor DarkGray
 Write-Host "  - Login field is 'number'; create uses 'phone_number'" -ForegroundColor DarkGray

@@ -1,71 +1,41 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import {
+  extractError,
+  getNotificationList,
+  isLoggedIn,
+  type Notification,
+} from "@/lib/letsmeet";
 
-const NOTIFS = [
-  {
-    id: 1,
-    type: "match",
-    avatar: "https://randomuser.me/api/portraits/women/44.jpg",
-    name: "Sophiya Calzoni",
-    text: "You and Sophiya matched! Say hello 👋",
-    time: "2m ago",
-    unread: true,
-  },
-  {
-    id: 2,
-    type: "like",
-    avatar: "https://randomuser.me/api/portraits/women/68.jpg",
-    name: "Isabella Uzo",
-    text: "Isabella liked your profile ❤️",
-    time: "15m ago",
-    unread: true,
-  },
-  {
-    id: 3,
-    type: "message",
-    avatar: "https://randomuser.me/api/portraits/women/12.jpg",
-    name: "Elizabeth Maria",
-    text: "Elizabeth sent you a message",
-    time: "1h ago",
-    unread: true,
-  },
-  {
-    id: 4,
-    type: "like",
-    avatar: "https://randomuser.me/api/portraits/women/29.jpg",
-    name: "Tina Schaefer",
-    text: "Tina liked your profile ❤️",
-    time: "3h ago",
-    unread: false,
-  },
-  {
-    id: 5,
-    type: "match",
-    avatar: "https://randomuser.me/api/portraits/women/55.jpg",
-    name: "Maria Panola",
-    text: "You and Maria matched! Start the conversation",
-    time: "Yesterday",
-    unread: false,
-  },
-  {
-    id: 6,
-    type: "message",
-    avatar: "https://randomuser.me/api/portraits/women/33.jpg",
-    name: "Sarah Johnson",
-    text: "Sarah: Hey there! How are you?",
-    time: "Yesterday",
-    unread: false,
-  },
-  {
-    id: 7,
-    type: "like",
-    avatar: "https://randomuser.me/api/portraits/women/76.jpg",
-    name: "Olivia Chen",
-    text: "Olivia liked your profile ❤️",
-    time: "2 days ago",
-    unread: false,
-  },
-];
+function formatRelativeTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+
+  return date.toLocaleDateString();
+}
+
+function notificationType(header: string): "match" | "like" | "message" {
+  const h = header.toLowerCase();
+  if (h.includes("match")) return "match";
+  if (h.includes("like")) return "like";
+  if (h.includes("message") || h.includes("chat")) return "message";
+  return "message";
+}
 
 const iconMap: Record<string, { bg: string; svg: React.ReactNode }> = {
   match: {
@@ -88,14 +58,51 @@ const iconMap: Record<string, { bg: string; svg: React.ReactNode }> = {
     bg: "bg-accent",
     svg: (
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-        <path d="M21 15C21 15.53 20.79 16.04 20.41 16.41C20.04 16.79 19.53 17 19 17H7L3 21V5C3 4.47 3.21 3.96 3.59 3.59C3.96 3.21 4.47 3 5 3H19C19.53 3 20.04 3.21 20.41 3.59C20.79 3.96 21 4.47 21 5V15Z" fill="white" />
+        <path
+          d="M21 15C21 15.53 20.79 16.04 20.41 16.41C20.04 16.79 19.53 17 19 17H7L3 21V5C3 4.47 3.21 3.96 3.59 3.59C3.96 3.21 4.47 3 5 3H19C19.53 3 20.04 3.21 20.41 3.59C20.79 3.96 21 4.47 21 5V15Z"
+          fill="white"
+        />
       </svg>
     ),
   },
 };
 
 export default function NotificationsPage() {
-  const unreadCount = NOTIFS.filter((n) => n.unread).length;
+  const [items, setItems] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoggedIn()) {
+      setLoading(false);
+      setError("Please sign in to view notifications.");
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const res = await getNotificationList();
+      if (cancelled) return;
+
+      if (!res.ok) {
+        setError(extractError(res.data, "Could not load notifications."));
+        setLoading(false);
+        return;
+      }
+
+      setItems(res.data.items ?? []);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const unreadCount = items.filter((n) => !n.is_read).length;
+  const unread = items.filter((n) => !n.is_read);
+  const earlier = items.filter((n) => n.is_read);
 
   return (
     <div className="mobile-shell flex flex-col min-h-screen bg-white">
@@ -110,21 +117,35 @@ export default function NotificationsPage() {
       />
 
       <div className="flex-1 overflow-y-auto pt-20 pb-28">
-        {/* Section: New */}
-        {NOTIFS.some((n) => n.unread) && (
+        {loading && (
+          <p className="px-5 pt-6 text-sm text-muted">Loading notifications…</p>
+        )}
+
+        {error && (
+          <p className="px-5 pt-6 text-sm text-rose-600">{error}</p>
+        )}
+
+        {!loading && !error && items.length === 0 && (
+          <p className="px-5 pt-6 text-sm text-muted">No notifications yet.</p>
+        )}
+
+        {unread.length > 0 && (
           <div>
-            <p className="px-5 pt-4 pb-2 text-xs font-bold text-muted uppercase tracking-wider">New</p>
-            {NOTIFS.filter((n) => n.unread).map((n) => (
+            <p className="px-5 pt-4 pb-2 text-xs font-bold text-muted uppercase tracking-wider">
+              New
+            </p>
+            {unread.map((n) => (
               <NotifRow key={n.id} n={n} />
             ))}
           </div>
         )}
 
-        {/* Section: Earlier */}
-        {NOTIFS.some((n) => !n.unread) && (
+        {earlier.length > 0 && (
           <div>
-            <p className="px-5 pt-5 pb-2 text-xs font-bold text-muted uppercase tracking-wider">Earlier</p>
-            {NOTIFS.filter((n) => !n.unread).map((n) => (
+            <p className="px-5 pt-5 pb-2 text-xs font-bold text-muted uppercase tracking-wider">
+              Earlier
+            </p>
+            {earlier.map((n) => (
               <NotifRow key={n.id} n={n} />
             ))}
           </div>
@@ -136,29 +157,38 @@ export default function NotificationsPage() {
   );
 }
 
-function NotifRow({ n }: { n: typeof NOTIFS[0] }) {
-  const icon = iconMap[n.type];
+function NotifRow({ n }: { n: Notification }) {
+  const type = notificationType(n.header);
+  const icon = iconMap[type];
+
   return (
-    <div className={`flex items-center gap-3 px-5 py-3.5 ${n.unread ? "bg-primary-light/40" : ""}`}>
-      {/* Avatar + badge */}
+    <div
+      className={`flex items-center gap-3 px-5 py-3.5 ${!n.is_read ? "bg-primary-light/40" : ""}`}
+    >
       <div className="relative shrink-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={n.avatar} alt={n.name} className="w-14 h-14 rounded-full object-cover" />
-        <span className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ${icon.bg} flex items-center justify-center border-2 border-white`}>
+        <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center text-lg font-bold text-primary">
+          {n.header.charAt(0).toUpperCase()}
+        </div>
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ${icon.bg} flex items-center justify-center border-2 border-white`}
+        >
           {icon.svg}
         </span>
       </div>
 
-      {/* Text */}
       <div className="flex-1 min-w-0">
-        <p className={`text-sm leading-snug ${n.unread ? "font-semibold text-dark" : "font-medium text-dark/80"}`}>
-          {n.text}
+        <p
+          className={`text-sm leading-snug ${!n.is_read ? "font-semibold text-dark" : "font-medium text-dark/80"}`}
+        >
+          <span className="block text-xs text-muted mb-0.5">{n.header}</span>
+          {n.message}
         </p>
-        <p className="text-xs text-muted mt-0.5">{n.time}</p>
+        <p className="text-xs text-muted mt-0.5">{formatRelativeTime(n.created_at)}</p>
       </div>
 
-      {/* Unread dot */}
-      {n.unread && <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />}
+      {!n.is_read && (
+        <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
+      )}
     </div>
   );
 }

@@ -1,9 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import { getMatchedList, mediaUrl, type ProfileCard } from "@/lib/letsmeet";
+import Avatar from "@/components/Avatar";
+import {
+  getMatchedList,
+  prefetchMedia,
+  stashChatPhoto,
+  normalizeMediaInput,
+  buildChatHref,
+  getStashedChatRoomId,
+  type ProfileCard,
+} from "@/lib/letsmeet";
 
 function normalize(data: ProfileCard[] | ProfileCard | null | undefined): ProfileCard[] {
   if (!data) return [];
@@ -11,17 +21,34 @@ function normalize(data: ProfileCard[] | ProfileCard | null | undefined): Profil
 }
 
 export default function MessagesPage() {
+  const pathname = usePathname();
   const [matches, setMatches] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [avatarEpoch, setAvatarEpoch] = useState(0);
 
   useEffect(() => {
     (async () => {
       const res = await getMatchedList();
-      if (res.ok) setMatches(normalize(res.data));
+      if (res.ok) {
+        const list = normalize(res.data);
+        setMatches(list);
+        prefetchMedia(list.map((c) => c.profile_photo));
+      }
       setLoading(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (pathname !== "/messages") return;
+    setAvatarEpoch((n) => n + 1);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (pathname === "/messages" && matches.length > 0) {
+      prefetchMedia(matches.map((c) => c.profile_photo));
+    }
+  }, [pathname, matches, avatarEpoch]);
 
   const filtered = matches.filter((m) =>
     m.name.toLowerCase().includes(query.toLowerCase())
@@ -64,32 +91,40 @@ export default function MessagesPage() {
         ) : (
           <div className="flex flex-col">
             {filtered.map((c) => {
-              const photo = mediaUrl(c.profile_photo);
+              const photoPath = normalizeMediaInput(c.profile_photo);
+              const room =
+                (c.chatroom_id && getStashedChatRoomId(c.chatroom_id)) ?? c.id;
               return (
                 <Link
                   key={c.user_id}
-                  href={`/chat?id=${encodeURIComponent(c.user_id)}&room=${c.id}&name=${encodeURIComponent(c.name)}`}
+                  href={buildChatHref({
+                    room,
+                    name: c.name,
+                    id: c.user_id,
+                    photo: photoPath,
+                    chatroomId: c.chatroom_id,
+                  })}
+                  onClick={() => {
+                    stashChatPhoto(c.id, c.profile_photo);
+                    stashChatPhoto(c.user_id, c.profile_photo);
+                  }}
                   className="flex items-center gap-4 px-5 py-4 hover:bg-border/40 transition-colors border-b border-border last:border-b-0"
                 >
-                  <div className="relative flex-shrink-0">
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-primary-light">
-                      {photo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={photo} alt={c.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="8" r="4" stroke="#F759F5" strokeWidth="2" />
-                          <path d="M4 20C4 17.79 7.58 16 12 16C16.42 16 20 17.79 20 20" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
+                  <Avatar
+                    key={`${c.user_id}-${avatarEpoch}`}
+                    photo={c.profile_photo}
+                    name={c.name}
+                    size="md"
+                    priority
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="text-base font-bold text-dark truncate">{c.name}</p>
                     </div>
                     <p className="text-sm text-muted truncate mt-0.5">
-                      {c.location || "Tap to start chatting"}
+                      {c.location && c.location.toLowerCase() !== "string"
+                        ? c.location
+                        : "Tap to start chatting"}
                     </p>
                   </div>
                 </Link>
