@@ -60,6 +60,12 @@ async function fetchFirstAvailable(
   return results.find((r) => r != null) ?? null;
 }
 
+function toResponseBody(buffer: Buffer): BodyInit {
+  const bytes = new Uint8Array(buffer.byteLength);
+  bytes.set(buffer);
+  return bytes;
+}
+
 export async function GET(req: NextRequest) {
   const rawUrl = req.nextUrl.searchParams.get("url");
   if (!rawUrl) {
@@ -73,7 +79,7 @@ export async function GET(req: NextRequest) {
 
   const cached = await loadCachedMedia(cacheKey);
   if (cached) {
-    return new NextResponse(cached.body, {
+    return new NextResponse(toResponseBody(cached.body), {
       status: 200,
       headers: {
         "Content-Type": cached.contentType,
@@ -94,7 +100,7 @@ export async function GET(req: NextRequest) {
     contentType: upstream.contentType,
   });
 
-  return new NextResponse(upstream.buffer, {
+  return new NextResponse(toResponseBody(upstream.buffer), {
     status: 200,
     headers: {
       "Content-Type": upstream.contentType,

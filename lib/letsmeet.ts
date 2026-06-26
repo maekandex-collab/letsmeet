@@ -150,7 +150,7 @@ const LETSMEET_MEDIA_ORIGIN = "http://letsmeet.com.ng";
 /** Upstream URLs to try for a normalized `/media/...` path. */
 export function mediaUpstreamUrls(cleanPath: string): string[] {
   const path = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  return [...new Set([`${MEDIA_BASE}${path}`, `${LETSMEET_MEDIA_ORIGIN}${path}`])];
+  return Array.from(new Set([`${MEDIA_BASE}${path}`, `${LETSMEET_MEDIA_ORIGIN}${path}`]));
 }
 
 /** Turns a backend media path (e.g. /media/profile_pics/x.jpg) into a full URL. */
@@ -616,7 +616,7 @@ export function markSwipedTarget(targetId: string): void {
   if (typeof window === "undefined") return;
   const set = getSwipedTargetIds();
   set.add(targetId);
-  localStorage.setItem(SWIPED_KEY, JSON.stringify([...set]));
+  localStorage.setItem(SWIPED_KEY, JSON.stringify(Array.from(set)));
 }
 
 export function markSwipedCard(card: ProfileCard): void {

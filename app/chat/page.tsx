@@ -19,7 +19,7 @@ import {
 import { useChatSocket } from "@/lib/useChatSocket";
 import Avatar from "@/components/Avatar";
 
-interface ChatMessage extends StoredChatMessage {}
+type ChatMessage = StoredChatMessage;
 
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
