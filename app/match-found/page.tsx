@@ -44,7 +44,7 @@ export default function MatchFoundPage() {
       </div>
 
       <div className="bottom-bar bg-dark border-dark flex-col gap-3">
-        <Link href="/chat" className="btn-primary">
+        <Link href="/messages" className="btn-primary">
           Start Conversation
         </Link>
         <Link href="/home" className="btn-secondary">

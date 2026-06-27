@@ -466,43 +466,65 @@ export async function bootstrapChatRoomId(
   return roomId;
 }
 
-export function buildChatHref(params: {
-  room?: number | null;
+/** In-memory peer context for chat — never put name/photo/user id in the URL. */
+export interface ChatPeerContext {
+  userId: string;
   name: string;
-  id: string;
-  photo?: string | null;
-  chatroomId?: string | number | null;
-}): string {
-  const q = new URLSearchParams();
-  q.set("id", params.id);
-  q.set("name", params.name);
+  photo: string | null;
+  chatroomId?: string;
+  roomId?: number;
+}
 
-  const roomId =
-    params.room ??
-    (params.chatroomId != null
-      ? resolveNumericRoomId({
-          id: 0,
-          room_id: parseNumericRoomId(params.chatroomId) ?? undefined,
-          chatroom_id: String(params.chatroomId),
-        })
-      : null);
+const CHAT_PEER_KEY = "lm_chat_peer";
 
-  if (roomId != null) {
-    q.set("room", String(roomId));
+/** Stash match context before navigating to a clean `/chat/{roomId}` URL. */
+export function stashChatPeer(card: ProfileCard): void {
+  if (typeof window === "undefined") return;
+  const roomId = resolveNumericRoomId(card);
+  const photo = normalizeMediaInput(card.profile_photo);
+  const peer: ChatPeerContext = {
+    userId: card.user_id,
+    name: card.name,
+    photo,
+    chatroomId: card.chatroom_id,
+    roomId: roomId ?? undefined,
+  };
+  try {
+    sessionStorage.setItem(CHAT_PEER_KEY, JSON.stringify(peer));
+  } catch {
+    // quota — best effort
   }
+  if (roomId != null) stashChatPhoto(roomId, photo);
+  stashChatPhoto(card.user_id, photo);
+  stashChatPhoto(card.id, photo);
+}
 
-  if (params.chatroomId != null) {
-    const key = String(params.chatroomId).trim();
-    if (key && parseNumericRoomId(key) !== roomId) {
-      q.set("chatroom", key);
-    }
+export function readChatPeer(): ChatPeerContext | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CHAT_PEER_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as ChatPeerContext;
+  } catch {
+    return null;
   }
+}
 
-  const path = normalizeMediaInput(params.photo);
-  if (path && path.startsWith("/") && path.length < 180) {
-    q.set("photo", path);
-  }
-  return `/chat?${q.toString()}`;
+export async function findMatchByRoomId(roomId: number): Promise<ProfileCard | null> {
+  const res = await getMatchedList();
+  if (!res.ok) return null;
+  const cards = parseProfileCards(res.data);
+  return cards.find((c) => resolveNumericRoomId(c) === roomId) ?? null;
+}
+
+export function buildVideoCallHref(roomId: number): string {
+  return `/video-call/${roomId}`;
+}
+
+/** Clean chat URL — only numeric room id (or `/chat/pending` before room is known). */
+export function buildChatHref(card: ProfileCard): string {
+  const roomId = resolveNumericRoomId(card);
+  return roomId != null ? `/chat/${roomId}` : "/chat/pending";
 }
 
 // ─── Chat history (API + local fallback) ─────────────────────────────────────

@@ -8,10 +8,8 @@ import Avatar from "@/components/Avatar";
 import {
   getMatchedList,
   prefetchMedia,
-  stashChatPhoto,
-  normalizeMediaInput,
+  stashChatPeer,
   buildChatHref,
-  resolveNumericRoomId,
   parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
@@ -90,22 +88,11 @@ export default function MessagesPage() {
           </div>
         ) : (
           <div className="flex flex-col">
-            {filtered.map((c) => {
-              const photoPath = normalizeMediaInput(c.profile_photo);
-              return (
+            {filtered.map((c) => (
                 <Link
                   key={c.user_id}
-                  href={buildChatHref({
-                    room: resolveNumericRoomId(c),
-                    name: c.name,
-                    id: c.user_id,
-                    photo: photoPath,
-                    chatroomId: c.chatroom_id,
-                  })}
-                  onClick={() => {
-                    stashChatPhoto(c.id, c.profile_photo);
-                    stashChatPhoto(c.user_id, c.profile_photo);
-                  }}
+                  href={buildChatHref(c)}
+                  onClick={() => stashChatPeer(c)}
                   className="flex items-center gap-4 px-5 py-4 hover:bg-border/40 transition-colors border-b border-border last:border-b-0"
                 >
                   <Avatar
@@ -126,8 +113,7 @@ export default function MessagesPage() {
                     </p>
                   </div>
                 </Link>
-              );
-            })}
+              ))}
           </div>
         )}
       </div>

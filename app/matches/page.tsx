@@ -12,11 +12,10 @@ import {
   likeBack,
   extractError,
   prefetchMedia,
-  stashChatPhoto,
+  stashChatPeer,
   buildChatHref,
   linkMatchRoomIds,
   extractRoomIdFromMatchResponse,
-  resolveNumericRoomId,
   parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
@@ -92,17 +91,8 @@ function LikeCard({
 function MatchCard({ profile }: { profile: ProfileCard }) {
   return (
     <Link
-      href={buildChatHref({
-        room: resolveNumericRoomId(profile),
-        name: profile.name,
-        id: profile.user_id,
-        photo: profile.profile_photo,
-        chatroomId: profile.chatroom_id,
-      })}
-      onClick={() => {
-        stashChatPhoto(profile.id, profile.profile_photo);
-        stashChatPhoto(profile.user_id, profile.profile_photo);
-      }}
+      href={buildChatHref(profile)}
+      onClick={() => stashChatPeer(profile)}
       className="relative block w-full h-full rounded-[26px] overflow-hidden shadow-card"
       style={{ boxShadow: "0 10px 32px rgba(62,54,237,0.22)" }}
     >
@@ -178,8 +168,7 @@ export default function MatchesPage() {
       const m = await getMatchedList();
       if (m.ok) setMatches(normalize(m.data));
 
-      stashChatPhoto(profile.id, profile.profile_photo);
-      stashChatPhoto(profile.user_id, profile.profile_photo);
+      stashChatPeer(profile);
 
       router.push("/match-found");
     } catch {
