@@ -381,23 +381,126 @@ export function getChatPhoto(...keys: (string | number | null | undefined)[]): s
   return null;
 }
 
+/** Parse a numeric chat room id (backend uses the same id for REST + WebSocket). */
+export function parseNumericRoomId(
+  value: string | number | null | undefined
+): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  const s = String(value).trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function extractRoomIdFromMatchResponse(data: {
+  room_id?: number | string | null;
+  chatroom_id?: string | number | null;
+  match_id?: number | string | null;
+}): number | null {
+  const fromRoom = parseNumericRoomId(data.room_id);
+  if (fromRoom != null) return fromRoom;
+  return parseNumericRoomId(data.chatroom_id);
+}
+
+/** Persist aliases (chatroom key, match card id) → numeric room_id. */
+export function linkMatchRoomIds(
+  roomId: number,
+  aliases: (string | number | null | undefined)[]
+): void {
+  stashChatRoomId(String(roomId), roomId);
+  for (const alias of aliases) {
+    if (alias == null || alias === "") continue;
+    const key = String(alias).trim();
+    if (key && key !== String(roomId)) {
+      stashChatRoomId(key, roomId);
+    }
+  }
+}
+
+export function resolveNumericRoomId(
+  card: Pick<ProfileCard, "room_id" | "chatroom_id" | "id">
+): number | null {
+  if (card.room_id != null && Number.isFinite(card.room_id)) return card.room_id;
+  const fromChatroom = card.chatroom_id
+    ? parseNumericRoomId(card.chatroom_id)
+    : null;
+  if (fromChatroom != null) return fromChatroom;
+  if (card.chatroom_id) {
+    const stashed = getStashedChatRoomId(card.chatroom_id);
+    if (stashed != null) return stashed;
+  }
+  return null;
+}
+
+export function resolveChatRoomFromParams(
+  roomParam: string | null,
+  chatroomParam: string | null
+): number | null {
+  if (chatroomParam) {
+    const stashed = getStashedChatRoomId(chatroomParam);
+    if (stashed != null) return stashed;
+    const numeric = parseNumericRoomId(chatroomParam);
+    if (numeric != null) return numeric;
+  }
+  if (roomParam) {
+    const stashed = getStashedChatRoomId(roomParam);
+    if (stashed != null) return stashed;
+    return parseNumericRoomId(roomParam);
+  }
+  return null;
+}
+
+/** Load numeric room_id from matched list when the URL only has a chatroom alias. */
+export async function bootstrapChatRoomId(
+  userId: string,
+  chatroomParam?: string | null
+): Promise<number | null> {
+  const res = await getMatchedList();
+  if (!res.ok) return null;
+  const match = parseProfileCards(res.data).find((m) => m.user_id === userId);
+  if (!match) return null;
+  const roomId = resolveNumericRoomId(match);
+  if (roomId == null) return null;
+  linkMatchRoomIds(roomId, [match.chatroom_id, chatroomParam, match.id]);
+  return roomId;
+}
+
 export function buildChatHref(params: {
-  room: string | number;
+  room?: number | null;
   name: string;
   id: string;
   photo?: string | null;
-  chatroomId?: string | null;
+  chatroomId?: string | number | null;
 }): string {
   const q = new URLSearchParams();
   q.set("id", params.id);
-  q.set("room", String(params.room));
   q.set("name", params.name);
+
+  const roomId =
+    params.room ??
+    (params.chatroomId != null
+      ? resolveNumericRoomId({
+          id: 0,
+          room_id: parseNumericRoomId(params.chatroomId) ?? undefined,
+          chatroom_id: String(params.chatroomId),
+        })
+      : null);
+
+  if (roomId != null) {
+    q.set("room", String(roomId));
+  }
+
+  if (params.chatroomId != null) {
+    const key = String(params.chatroomId).trim();
+    if (key && parseNumericRoomId(key) !== roomId) {
+      q.set("chatroom", key);
+    }
+  }
+
   const path = normalizeMediaInput(params.photo);
   if (path && path.startsWith("/") && path.length < 180) {
     q.set("photo", path);
-  }
-  if (params.chatroomId) {
-    q.set("chatroom", params.chatroomId);
   }
   return `/chat?${q.toString()}`;
 }
@@ -443,7 +546,7 @@ export function saveChatMessages(
   }
 }
 
-/** Map chatroom UUID → integer room_id returned by POST /message/send */
+/** Map chatroom alias → numeric room_id (from match list or POST /message/send). */
 export function stashChatRoomId(chatroomId: string, roomId: number): void {
   if (typeof window === "undefined") return;
   try {
@@ -461,17 +564,42 @@ export function getStashedChatRoomId(chatroomId: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function isHtmlError(text: string): boolean {
+  const msg = text.trim();
+  return (
+    msg.startsWith("<") ||
+    msg.includes("<!DOCTYPE") ||
+    msg.includes("<html") ||
+    msg.length > 280
+  );
+}
+
+function cleanErrorText(text: string, fallback: string): string {
+  return isHtmlError(text) ? fallback : text.trim();
+}
+
 export function extractError(
   data: unknown,
   fallback = "Something went wrong. Please try again."
 ): string {
+  if (typeof data === "string") {
+    return cleanErrorText(data, fallback);
+  }
   if (!data || typeof data !== "object") return fallback;
   const obj = data as Record<string, unknown>;
-  if (typeof obj.detail === "string") return obj.detail;
-  if (typeof obj.error === "string") return obj.error;
-  if (typeof obj.message === "string") return obj.message;
+  if (typeof obj.detail === "string") {
+    return cleanErrorText(obj.detail, fallback);
+  }
+  if (typeof obj.error === "string") {
+    return cleanErrorText(obj.error, fallback);
+  }
+  if (typeof obj.message === "string") {
+    return cleanErrorText(obj.message, fallback);
+  }
   const first = Object.values(obj)[0];
-  if (Array.isArray(first) && typeof first[0] === "string") return first[0];
+  if (Array.isArray(first) && typeof first[0] === "string") {
+    return cleanErrorText(first[0], fallback);
+  }
   return fallback;
 }
 
@@ -486,7 +614,7 @@ async function request<T = unknown>(
   options: { method?: string; body?: unknown; auth?: boolean; form?: FormData } = {}
 ): Promise<ApiResult<T>> {
   const { method = "GET", body, auth = false, form } = options;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { Accept: "application/json" };
 
   if (auth) {
     const token = getToken();
@@ -509,7 +637,11 @@ async function request<T = unknown>(
     try {
       data = JSON.parse(text);
     } catch {
-      data = { message: text };
+      data = {
+        message: isHtmlError(text)
+          ? "Request failed. Please try again."
+          : text,
+      };
     }
   }
   return { ok: res.ok, status: res.status, data: data as T };
@@ -541,6 +673,8 @@ export interface ProfileCard {
   age: number;
   profile_photo: string | null;
   chatroom_id?: string;
+  /** Numeric room id for REST + WebSocket (same value per backend /chat/test/). */
+  room_id?: number;
 }
 
 /** Map varying backend field names onto ProfileCard. */
@@ -554,6 +688,18 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
   const idRaw = raw.id ?? raw.match_id;
   const userRaw = raw.user_id ?? raw.swipe_user_id ?? raw.id;
 
+  const chatroomRaw = raw.chatroom_id ?? raw.room_id;
+  const chatroomId =
+    typeof chatroomRaw === "string"
+      ? chatroomRaw
+      : typeof chatroomRaw === "number"
+        ? String(chatroomRaw)
+        : undefined;
+
+  const roomId =
+    parseNumericRoomId(raw.room_id as string | number | null | undefined) ??
+    parseNumericRoomId(chatroomRaw as string | number | null | undefined);
+
   return {
     id: typeof idRaw === "number" ? idRaw : Number(idRaw) || 0,
     user_id: userRaw != null ? String(userRaw) : "",
@@ -561,8 +707,8 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
     location: String(raw.location ?? ""),
     age: typeof raw.age === "number" ? raw.age : Number(raw.age) || 0,
     profile_photo: photo,
-    chatroom_id:
-      typeof raw.chatroom_id === "string" ? raw.chatroom_id : undefined,
+    chatroom_id: chatroomId,
+    room_id: roomId ?? undefined,
   };
 }
 
@@ -593,13 +739,15 @@ export interface SwipeResponse {
   error?: string;
   matched?: boolean;
   match_id?: number;
-  chatroom_id?: string;
+  chatroom_id?: string | number;
+  room_id?: number;
 }
 
 export interface LikeResponse {
   matched: boolean;
   match_id?: number;
-  chatroom_id?: string;
+  chatroom_id?: string | number;
+  room_id?: number;
 }
 
 export interface SendMessageResponse {
@@ -633,6 +781,35 @@ export interface Notification {
 export interface PagedNotifications {
   items: Notification[];
   count: number;
+}
+
+/** Map backend `NotificationSchema` (`headers`, `read`) to app shape. */
+export function normalizeNotification(raw: Record<string, unknown>): Notification {
+  return {
+    id: typeof raw.id === "number" ? raw.id : Number(raw.id) || 0,
+    message: String(raw.message ?? ""),
+    header: String(raw.headers ?? raw.header ?? "Notification"),
+    created_at: String(raw.created_at ?? ""),
+    is_read: raw.read === true || raw.is_read === true,
+  };
+}
+
+export function parseNotificationList(data: unknown): PagedNotifications {
+  if (!data || typeof data !== "object") {
+    return { items: [], count: 0 };
+  }
+  const obj = data as { items?: unknown; count?: unknown };
+  const items = Array.isArray(obj.items)
+    ? obj.items.map((item) =>
+        normalizeNotification(
+          item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+        )
+      )
+    : [];
+  return {
+    items,
+    count: typeof obj.count === "number" ? obj.count : items.length,
+  };
 }
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -802,35 +979,17 @@ function nowTimeLabel(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function getMessageList(roomId: number) {
+export function getMessageList(roomId: number | string, page = 1) {
   return request<unknown>(
-    `/message/list?room_id=${encodeURIComponent(String(roomId))}`,
+    `/message/room/${encodeURIComponent(String(roomId))}?page=${page}`,
     { auth: true }
   );
 }
 
-export async function markNotificationRead(id: number) {
-  const body = { is_read: true };
-  let res = await request(`/notification/${id}/read`, {
-    method: "PATCH",
-    body,
-    auth: true,
-  });
-  if (res.status === 404) {
-    res = await request(`/notifcation/${id}/read`, {
-      method: "PATCH",
-      body,
-      auth: true,
-    });
-  }
-  if (res.status === 404) {
-    res = await request("/notification/mark-read", {
-      method: "POST",
-      body: { id, ...body },
-      auth: true,
-    });
-  }
-  return res;
+/** Mark one notification read — `GET /notification/read?notification_id=` */
+export function markNotificationRead(id: number) {
+  const params = new URLSearchParams({ notification_id: String(id) });
+  return request(`/notification/read?${params}`, { auth: true });
 }
 
 export function getSingleProfile(userId: string) {
@@ -933,9 +1092,10 @@ export function sendMessage(
   });
 }
 
-/** Backend path uses the typo `notifcation` (not notification). */
-export function getNotificationList(page = 1, pageSize?: number) {
+export async function getNotificationList(page = 1, pageSize?: number) {
   const params = new URLSearchParams({ page: String(page) });
   if (pageSize != null) params.set("page_size", String(pageSize));
-  return request<PagedNotifications>(`/notifcation/list?${params}`, { auth: true });
+  const res = await request<unknown>(`/notification/list?${params}`, { auth: true });
+  if (!res.ok) return res as ApiResult<PagedNotifications>;
+  return { ...res, data: parseNotificationList(res.data) };
 }

@@ -18,6 +18,8 @@ import {
   parseProfileCards,
   extractError,
   loadDiscoverPreferences,
+  linkMatchRoomIds,
+  extractRoomIdFromMatchResponse,
   type ProfileCard,
 } from "@/lib/letsmeet";
 
@@ -93,6 +95,10 @@ export default function HomePage() {
       markSwipedCard(card);
 
       if (dir === "right" && res.ok && res.data?.matched) {
+        const roomId = extractRoomIdFromMatchResponse(res.data);
+        if (roomId != null) {
+          linkMatchRoomIds(roomId, [res.data.chatroom_id, card.chatroom_id, card.id]);
+        }
         setCards((prev) => prev.filter((c) => swipeTargetId(c) !== swipeTargetId(card)));
         router.push("/match-found");
         return;

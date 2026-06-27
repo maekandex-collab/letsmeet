@@ -15,8 +15,9 @@ import {
   prefetchMedia,
   loadChatMessages,
   saveChatMessages,
-  stashChatRoomId,
-  getStashedChatRoomId,
+  linkMatchRoomIds,
+  resolveChatRoomFromParams,
+  bootstrapChatRoomId,
   type StoredChatMessage,
 } from "@/lib/letsmeet";
 import { useChatSocket } from "@/lib/useChatSocket";
@@ -35,12 +36,27 @@ function ChatContent() {
   const userId = params.get("id");
   const roomParam = params.get("room");
   const chatroomParam = params.get("chatroom");
-  const roomFromUrl = roomParam ? Number(roomParam) : null;
-  const stashedRoom = chatroomParam ? getStashedChatRoomId(chatroomParam) : null;
-  const roomId =
-    stashedRoom ??
-    (roomFromUrl != null && !Number.isNaN(roomFromUrl) ? roomFromUrl : null);
-  const wsRoom = chatroomParam ?? roomId;
+  const [roomId, setRoomId] = useState<number | null>(() =>
+    resolveChatRoomFromParams(roomParam, chatroomParam)
+  );
+
+  useEffect(() => {
+    setRoomId(resolveChatRoomFromParams(roomParam, chatroomParam));
+  }, [roomParam, chatroomParam]);
+
+  useEffect(() => {
+    if (roomId != null || !userId) return;
+    let cancelled = false;
+    (async () => {
+      const boot = await bootstrapChatRoomId(userId, chatroomParam);
+      if (!cancelled && boot != null) setRoomId(boot);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, chatroomParam, roomId]);
+
+  const storageKey = roomId ?? roomParam ?? chatroomParam ?? "";
 
   const [photo, setPhoto] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -50,7 +66,6 @@ function ChatContent() {
   const [menuOpen, setMenuOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string>("");
-  const storageKey = roomId ?? roomParam ?? chatroomParam ?? "";
 
   useEffect(() => {
     const raw =
@@ -122,13 +137,13 @@ function ChatContent() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
 
-  const { connected, send: sendWs } = useChatSocket(wsRoom, onIncoming);
+  const { connected, send: sendWs } = useChatSocket(roomId, onIncoming);
 
   const videoHref =
-    roomParam != null && userId
+    roomId != null && userId
       ? `/video-call?${new URLSearchParams({
           id: userId,
-          room: roomParam,
+          room: String(roomId),
           name,
           ...(chatroomParam ? { chatroom: chatroomParam } : {}),
         }).toString()}`
@@ -169,10 +184,10 @@ function ChatContent() {
         return;
       }
 
-      if (chatroomParam && res.data?.room_id != null) {
-        stashChatRoomId(chatroomParam, res.data.room_id);
-      } else if (chatroomParam && roomId != null) {
-        stashChatRoomId(chatroomParam, roomId);
+      if (res.data?.room_id != null) {
+        const sentRoom = res.data.room_id;
+        setRoomId(sentRoom);
+        linkMatchRoomIds(sentRoom, [chatroomParam, roomParam]);
       }
     } catch {
       setError("Network error. Message not sent.");

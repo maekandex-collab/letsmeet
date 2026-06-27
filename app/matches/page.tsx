@@ -14,8 +14,9 @@ import {
   prefetchMedia,
   stashChatPhoto,
   buildChatHref,
-  getStashedChatRoomId,
-  stashChatRoomId,
+  linkMatchRoomIds,
+  extractRoomIdFromMatchResponse,
+  resolveNumericRoomId,
   parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
@@ -92,9 +93,7 @@ function MatchCard({ profile }: { profile: ProfileCard }) {
   return (
     <Link
       href={buildChatHref({
-        room:
-          (profile.chatroom_id && getStashedChatRoomId(profile.chatroom_id)) ??
-          profile.id,
+        room: resolveNumericRoomId(profile),
         name: profile.name,
         id: profile.user_id,
         photo: profile.profile_photo,
@@ -165,9 +164,13 @@ export default function MatchesPage() {
         return;
       }
 
-      const chatroomId = res.data.chatroom_id ?? profile.chatroom_id;
-      if (chatroomId && res.data.match_id != null) {
-        stashChatRoomId(chatroomId, res.data.match_id);
+      const roomId = extractRoomIdFromMatchResponse(res.data);
+      if (roomId != null) {
+        linkMatchRoomIds(roomId, [
+          res.data.chatroom_id,
+          profile.chatroom_id,
+          profile.id,
+        ]);
       }
 
       setLikes((prev) => prev.filter((p) => p.user_id !== profile.user_id));

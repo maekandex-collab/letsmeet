@@ -11,7 +11,7 @@ import {
   stashChatPhoto,
   normalizeMediaInput,
   buildChatHref,
-  getStashedChatRoomId,
+  resolveNumericRoomId,
   parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
@@ -92,13 +92,11 @@ export default function MessagesPage() {
           <div className="flex flex-col">
             {filtered.map((c) => {
               const photoPath = normalizeMediaInput(c.profile_photo);
-              const room =
-                (c.chatroom_id && getStashedChatRoomId(c.chatroom_id)) ?? c.id;
               return (
                 <Link
                   key={c.user_id}
                   href={buildChatHref({
-                    room,
+                    room: resolveNumericRoomId(c),
                     name: c.name,
                     id: c.user_id,
                     photo: photoPath,
