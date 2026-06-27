@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getClientMediaUrl, mediaUrl, warmMediaBlob } from "@/lib/letsmeet";
+import { useMediaDisplay } from "@/lib/useMediaDisplay";
 
 const SIZES = {
   sm: "w-10 h-10 text-xs",
@@ -42,47 +41,13 @@ export default function Avatar({
   priority = false,
   className = "",
 }: AvatarProps) {
-  const [failed, setFailed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [retry, setRetry] = useState(0);
-  const [src, setSrc] = useState<string | null>(() => getClientMediaUrl(photo));
-
-  useEffect(() => {
-    let cancelled = false;
-    setFailed(false);
-    setRetry(0);
-
-    const cached = getClientMediaUrl(photo);
-    if (cached?.startsWith("blob:")) {
-      setSrc(cached);
-      setLoaded(true);
-      return;
-    }
-
-    setLoaded(false);
-    const proxy = mediaUrl(photo);
-    setSrc(proxy);
-
-    void warmMediaBlob(photo).then((blobUrl) => {
-      if (cancelled || !blobUrl) return;
-      setSrc(blobUrl);
-      setLoaded(true);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [photo]);
-
-  const proxyUrl = mediaUrl(photo);
-  const url =
-    src?.startsWith("blob:") ? src : proxyUrl ? `${proxyUrl}${retry ? `&_retry=${retry}` : ""}` : null;
-  const showImage = url && !failed;
+  const { src, loaded, failed, onLoad, onError, bindImg } = useMediaDisplay(photo);
 
   const label = initials(name || "?");
   const hue = placeholderHue(name || "user");
   const gradient = `linear-gradient(135deg, hsl(${hue} 72% 62%), hsl(${(hue + 40) % 360} 68% 48%))`;
   const sizeClass = fill ? "absolute inset-0 w-full h-full text-lg" : SIZES[size];
+  const showImage = Boolean(src && !failed);
 
   return (
     <div
@@ -101,25 +66,16 @@ export default function Avatar({
       {showImage && (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
-          key={`${url}-${retry}`}
-          src={url}
+          key={src}
+          ref={bindImg}
+          src={src}
           alt=""
           aria-hidden="true"
           decoding="async"
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}
-          onLoad={() => setLoaded(true)}
-          onError={() => {
-            if (src?.startsWith("blob:")) {
-              setFailed(true);
-              return;
-            }
-            if (retry < 2) {
-              window.setTimeout(() => setRetry((n) => n + 1), 400 * (retry + 1));
-            } else {
-              setFailed(true);
-            }
-          }}
+          onLoad={onLoad}
+          onError={onError}
           className={`absolute inset-0 w-full h-full object-cover object-center z-10 transition-opacity duration-200 ${
             loaded ? "opacity-100" : "opacity-0"
           }`}

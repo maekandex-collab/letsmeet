@@ -28,8 +28,7 @@ function resolveFetchTargets(rawUrl: string): { cacheKey: string; targets: strin
 function prepareFetchUrl(target: string): string {
   try {
     const url = new URL(target);
-    if (url.hostname === "letsmeet.com.ng") {
-      url.protocol = "http:";
+    if (url.hostname === "letsmeet.com.ng" && url.protocol === "http:") {
       return url.toString();
     }
   } catch {
@@ -39,15 +38,33 @@ function prepareFetchUrl(target: string): string {
 }
 
 async function fetchMedia(target: string): Promise<{ buffer: Buffer; contentType: string; source: string } | null> {
+  const attempts = [target];
   try {
-    const res = await fetch(prepareFetchUrl(target), { cache: "no-store" });
-    if (!res.ok || !res.body) return null;
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") ?? "application/octet-stream";
-    return { buffer, contentType, source: target };
+    const url = new URL(target);
+    if (url.hostname === "letsmeet.com.ng") {
+      const https = new URL(target);
+      https.protocol = "https:";
+      attempts.push(https.toString());
+      const http = new URL(target);
+      http.protocol = "http:";
+      if (!attempts.includes(http.toString())) attempts.unshift(http.toString());
+    }
   } catch {
-    return null;
+    // single attempt
   }
+
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(prepareFetchUrl(attempt), { cache: "no-store" });
+      if (!res.ok || !res.body) continue;
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+      return { buffer, contentType, source: attempt };
+    } catch {
+      // try next
+    }
+  }
+  return null;
 }
 
 async function fetchFirstAvailable(

@@ -8,6 +8,9 @@ import {
   extractError,
   getChatPhoto,
   getSingleProfile,
+  getMessageList,
+  parseApiChatMessages,
+  getUser,
   normalizeMediaInput,
   prefetchMedia,
   loadChatMessages,
@@ -76,8 +79,28 @@ function ChatContent() {
 
   useEffect(() => {
     if (!storageKey) return;
-    setMessages(loadChatMessages(storageKey));
-  }, [storageKey]);
+
+    const local = loadChatMessages(storageKey);
+    setMessages(local);
+
+    if (roomId == null) return;
+
+    let cancelled = false;
+    (async () => {
+      const res = await getMessageList(roomId);
+      if (cancelled || !res.ok) return;
+
+      const fromApi = parseApiChatMessages(res.data, getUser()?.userId ?? null);
+      if (fromApi.length === 0) return;
+
+      setMessages(fromApi);
+      saveChatMessages(storageKey, fromApi);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey, roomId]);
 
   useEffect(() => {
     if (!storageKey || messages.length === 0) return;

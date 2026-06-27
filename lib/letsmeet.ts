@@ -145,12 +145,28 @@ export function normalizeMediaInput(path?: string | null): string | null {
   return working;
 }
 
-const LETSMEET_MEDIA_ORIGIN = "http://letsmeet.com.ng";
+const LETSMEET_MEDIA_HOSTS = ["https://letsmeet.com.ng", "http://letsmeet.com.ng"];
 
 /** Upstream URLs to try for a normalized `/media/...` path. */
 export function mediaUpstreamUrls(cleanPath: string): string[] {
   const path = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  return Array.from(new Set([`${MEDIA_BASE}${path}`, `${LETSMEET_MEDIA_ORIGIN}${path}`]));
+  const paths = [path];
+  if (path.includes("/profile_images/")) {
+    paths.push(path.replace("/profile_images/", "/profile_pics/"));
+  } else if (path.includes("/profile_pics/")) {
+    paths.push(path.replace("/profile_pics/", "/profile_images/"));
+  }
+
+  const urls: string[] = [];
+  for (const p of paths) {
+    urls.push(`${MEDIA_BASE}${p}`);
+  }
+  for (const p of paths) {
+    for (const host of LETSMEET_MEDIA_HOSTS) {
+      urls.push(`${host}${p}`);
+    }
+  }
+  return Array.from(new Set(urls));
 }
 
 /** Turns a backend media path (e.g. /media/profile_pics/x.jpg) into a full URL. */
@@ -158,15 +174,19 @@ export function mediaUrl(path?: string | null): string | null {
   const cleanPath = normalizeMediaInput(path);
   if (!cleanPath) return null;
 
-  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
-    return `${MEDIA_PROXY}?url=${encodeURIComponent(cleanPath)}`;
-  }
-
   if (cleanPath.startsWith("//")) {
-    return `${MEDIA_PROXY}?url=${encodeURIComponent(`http:${cleanPath}`)}`;
+    return `${MEDIA_PROXY}?url=${encodeURIComponent(normalizeMediaInput(`http:${cleanPath}`) ?? cleanPath)}`;
   }
 
-  return `${MEDIA_PROXY}?url=${encodeURIComponent(`${MEDIA_BASE}${cleanPath}`)}`;
+  // Proxy receives a normalized `/media/...` path (or full URL stripped to path).
+  return `${MEDIA_PROXY}?url=${encodeURIComponent(cleanPath)}`;
+}
+
+/** Public CDN URL (bypasses Next proxy). Works in `<img>` without CORS issues. */
+export function directMediaUrl(path?: string | null): string | null {
+  const cleanPath = normalizeMediaInput(path);
+  if (!cleanPath || cleanPath.startsWith("http")) return null;
+  return `${MEDIA_BASE}${cleanPath}`;
 }
 
 /** Warm the browser cache for upcoming profile photos (call after feed/matches load). */
@@ -175,6 +195,38 @@ const CLIENT_BLOB_MAX = 64;
 
 function mediaCacheKey(path?: string | null): string | null {
   return normalizeMediaInput(path);
+}
+
+/** URLs for <img src> — direct CDN first (fast in browser), then same-origin proxy. */
+export function displayMediaCandidates(path?: string | null): string[] {
+  if (typeof window !== "undefined") {
+    const key = mediaCacheKey(path);
+    const blob = key ? clientMediaBlobs.get(key) : undefined;
+    if (blob) return [blob];
+  }
+
+  const urls: string[] = [];
+  const direct = directMediaUrl(path);
+  if (direct) urls.push(direct);
+
+  const proxy = mediaUrl(path);
+  if (proxy && proxy !== direct) urls.push(proxy);
+
+  return urls;
+}
+
+/** All fetch targets for warm-cache (proxy + CDN + upstream mirrors). */
+export function mediaSourceCandidates(path?: string | null): string[] {
+  const urls = displayMediaCandidates(path);
+  const cleanPath = normalizeMediaInput(path);
+
+  if (cleanPath?.startsWith("/")) {
+    for (const upstream of mediaUpstreamUrls(cleanPath)) {
+      urls.push(upstream);
+    }
+  }
+
+  return Array.from(new Set(urls));
 }
 
 export function getClientMediaUrl(path?: string | null): string | null {
@@ -187,8 +239,7 @@ export function getClientMediaUrl(path?: string | null): string | null {
 export async function warmMediaBlob(path?: string | null): Promise<string | null> {
   if (typeof window === "undefined") return null;
   const key = mediaCacheKey(path);
-  const proxyUrl = mediaUrl(path);
-  if (!key || !proxyUrl) return null;
+  if (!key) return null;
 
   const existing = clientMediaBlobs.get(key);
   if (existing) return existing;
@@ -198,21 +249,43 @@ export async function warmMediaBlob(path?: string | null): Promise<string | null
 
   const task = (async () => {
     try {
-      const res = await fetch(proxyUrl, { cache: "force-cache" });
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      const obj = URL.createObjectURL(blob);
+      // Only fetch same-origin proxy URLs — cross-origin media hosts block fetch() via CORS.
+      const fetchable = mediaSourceCandidates(path).filter(
+        (u) => u.startsWith("blob:") || u.startsWith(MEDIA_PROXY)
+      );
 
-      if (clientMediaBlobs.size >= CLIENT_BLOB_MAX) {
-        const oldest = clientMediaBlobs.keys().next().value;
-        if (oldest) {
-          const oldUrl = clientMediaBlobs.get(oldest);
-          if (oldUrl) URL.revokeObjectURL(oldUrl);
-          clientMediaBlobs.delete(oldest);
+      for (const candidate of fetchable) {
+        if (candidate.startsWith("blob:")) return candidate;
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 6_000);
+        let res: Response;
+        try {
+          res = await fetch(candidate, {
+            cache: "force-cache",
+            signal: controller.signal,
+          });
+        } catch {
+          continue;
+        } finally {
+          window.clearTimeout(timer);
         }
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        if (blob.type.includes("json") || blob.type.includes("text/html")) continue;
+        const obj = URL.createObjectURL(blob);
+
+        if (clientMediaBlobs.size >= CLIENT_BLOB_MAX) {
+          const oldest = clientMediaBlobs.keys().next().value;
+          if (oldest) {
+            const oldUrl = clientMediaBlobs.get(oldest);
+            if (oldUrl) URL.revokeObjectURL(oldUrl);
+            clientMediaBlobs.delete(oldest);
+          }
+        }
+        clientMediaBlobs.set(key, obj);
+        return obj;
       }
-      clientMediaBlobs.set(key, obj);
-      return obj;
+      return null;
     } catch {
       return null;
     } finally {
@@ -281,6 +354,10 @@ export function writeFeedSnapshot(cards: ProfileCard[], current: number): void {
   feedSnapshot = { cards, current, savedAt: Date.now() };
 }
 
+export function clearFeedSnapshot(): void {
+  feedSnapshot = null;
+}
+
 function chatPhotoKey(roomId: string | number): string {
   return `lm_chat_photo_${roomId}`;
 }
@@ -325,7 +402,7 @@ export function buildChatHref(params: {
   return `/chat?${q.toString()}`;
 }
 
-// ─── Local chat history (backend has send only, no message list API) ─────────
+// ─── Chat history (API + local fallback) ─────────────────────────────────────
 
 export interface StoredChatMessage {
   id: number;
@@ -466,6 +543,39 @@ export interface ProfileCard {
   chatroom_id?: string;
 }
 
+/** Map varying backend field names onto ProfileCard. */
+export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard {
+  const photo =
+    (typeof raw.profile_photo === "string" && raw.profile_photo) ||
+    (typeof raw.profile_image === "string" && raw.profile_image) ||
+    (typeof raw.image === "string" && raw.image) ||
+    null;
+
+  const idRaw = raw.id ?? raw.match_id;
+  const userRaw = raw.user_id ?? raw.swipe_user_id ?? raw.id;
+
+  return {
+    id: typeof idRaw === "number" ? idRaw : Number(idRaw) || 0,
+    user_id: userRaw != null ? String(userRaw) : "",
+    name: String(raw.name ?? raw.full_name ?? "User"),
+    location: String(raw.location ?? ""),
+    age: typeof raw.age === "number" ? raw.age : Number(raw.age) || 0,
+    profile_photo: photo,
+    chatroom_id:
+      typeof raw.chatroom_id === "string" ? raw.chatroom_id : undefined,
+  };
+}
+
+export function parseProfileCards(data: unknown): ProfileCard[] {
+  if (!data) return [];
+  const list = Array.isArray(data) ? data : [data];
+  return list.map((item) =>
+    normalizeProfileCard(
+      item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+    )
+  );
+}
+
 export interface SingleProfile {
   name: string;
   date_of_birth: number; // backend returns age here
@@ -552,8 +662,175 @@ export function uploadProfile(fields: ProfileUploadFields) {
   return request("/user/profile", { method: "POST", form, auth: true });
 }
 
-export function getFeed() {
-  return request<ProfileCard[]>("/feed", { auth: true });
+export interface FeedFilters {
+  min_age?: number;
+  max_age?: number;
+  religion?: string;
+  gender?: string;
+  interests?: string;
+}
+
+export interface DiscoverPreferences {
+  min_age: number;
+  max_age: number;
+  religion: string;
+}
+
+const PREFS_KEY = "lm_discover_prefs";
+
+const DEFAULT_PREFS: DiscoverPreferences = {
+  min_age: 18,
+  max_age: 40,
+  religion: "",
+};
+
+export function loadDiscoverPreferences(): DiscoverPreferences {
+  if (typeof window === "undefined") return DEFAULT_PREFS;
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const parsed = JSON.parse(raw) as Partial<DiscoverPreferences>;
+    return {
+      min_age: parsed.min_age ?? DEFAULT_PREFS.min_age,
+      max_age: parsed.max_age ?? DEFAULT_PREFS.max_age,
+      religion: parsed.religion ?? DEFAULT_PREFS.religion,
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+export function storeDiscoverPreferences(prefs: DiscoverPreferences): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
+
+export function getFeed(filters?: FeedFilters) {
+  const params = new URLSearchParams();
+  if (filters?.min_age != null) params.set("min_age", String(filters.min_age));
+  if (filters?.max_age != null) params.set("max_age", String(filters.max_age));
+  if (filters?.religion) params.set("religion", filters.religion);
+  if (filters?.gender) params.set("gender", filters.gender);
+  if (filters?.interests) params.set("interests", filters.interests);
+  const qs = params.toString();
+  return request<ProfileCard[]>(`/feed${qs ? `?${qs}` : ""}`, { auth: true });
+}
+
+export function getDiscoverPreferences() {
+  return request<DiscoverPreferences>("/preferences", { auth: true });
+}
+
+export function saveDiscoverPreferences(prefs: DiscoverPreferences) {
+  return request<DiscoverPreferences>("/preferences", {
+    method: "POST",
+    body: prefs,
+    auth: true,
+  });
+}
+
+export function getInterests() {
+  return request<string[] | { interests?: string[] }>("/interests", { auth: true });
+}
+
+export interface ApiChatMessage {
+  id?: number;
+  message_id?: number;
+  message?: string;
+  text?: string;
+  sender_id?: number;
+  user_id?: number;
+  is_mine?: boolean;
+  is_sender?: boolean;
+  created_at?: string;
+  timestamp?: string;
+}
+
+export function parseApiChatMessages(
+  data: unknown,
+  myUserId?: number | null
+): StoredChatMessage[] {
+  const list = Array.isArray(data)
+    ? data
+    : data && typeof data === "object"
+      ? ((data as { messages?: unknown; items?: unknown }).messages ??
+        (data as { items?: unknown }).items ??
+        [])
+      : [];
+
+  if (!Array.isArray(list)) return [];
+
+  return list
+    .map((raw, index) => {
+      if (!raw || typeof raw !== "object") return null;
+      const m = raw as ApiChatMessage;
+      const text = m.message ?? m.text ?? "";
+      if (!text.trim()) return null;
+
+      const senderId = m.sender_id ?? m.user_id;
+      const from: StoredChatMessage["from"] =
+        m.is_mine === true || m.is_sender === true
+          ? "me"
+          : m.is_mine === false || m.is_sender === false
+            ? "them"
+            : myUserId != null && senderId != null && senderId === myUserId
+              ? "me"
+              : "them";
+
+      const atRaw = m.created_at ?? m.timestamp;
+      const at = atRaw ? new Date(atRaw).getTime() : Date.now() + index;
+      const time = Number.isFinite(at)
+        ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : nowTimeLabel();
+
+      return {
+        id: m.id ?? m.message_id ?? at + index,
+        from,
+        text,
+        time,
+        at: Number.isFinite(at) ? at : Date.now() + index,
+      } satisfies StoredChatMessage;
+    })
+    .filter((m): m is StoredChatMessage => m != null)
+    .sort((a, b) => a.at - b.at);
+}
+
+function nowTimeLabel(): string {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+export function getMessageList(roomId: number) {
+  return request<unknown>(
+    `/message/list?room_id=${encodeURIComponent(String(roomId))}`,
+    { auth: true }
+  );
+}
+
+export async function markNotificationRead(id: number) {
+  const body = { is_read: true };
+  let res = await request(`/notification/${id}/read`, {
+    method: "PATCH",
+    body,
+    auth: true,
+  });
+  if (res.status === 404) {
+    res = await request(`/notifcation/${id}/read`, {
+      method: "PATCH",
+      body,
+      auth: true,
+    });
+  }
+  if (res.status === 404) {
+    res = await request("/notification/mark-read", {
+      method: "POST",
+      body: { id, ...body },
+      auth: true,
+    });
+  }
+  return res;
 }
 
 export function getSingleProfile(userId: string) {

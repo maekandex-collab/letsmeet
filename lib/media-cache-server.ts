@@ -69,6 +69,7 @@ export async function writeMediaCache(
   entry: MediaCacheEntry
 ): Promise<void> {
   setMemory(cacheKey, entry);
+  if (process.env.LETSMEET_MEDIA_DISK_CACHE === "0") return;
   try {
     await mkdir(CACHE_DIR, { recursive: true });
     const base = diskPath(cacheKey);

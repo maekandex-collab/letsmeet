@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getClientMediaUrl, mediaUrl, warmMediaBlob } from "@/lib/letsmeet";
+import { useMediaDisplay } from "@/lib/useMediaDisplay";
 
 interface ProfilePhotoProps {
   /** Backend media path, e.g. /media/profile_pics/x.jpg */
@@ -28,41 +27,9 @@ function Placeholder() {
 }
 
 export default function ProfilePhoto({ photo, alt, priority = false }: ProfilePhotoProps) {
-  const [src, setSrc] = useState<string | null>(() => getClientMediaUrl(photo));
-  const [loaded, setLoaded] = useState(() => {
-    const hit = getClientMediaUrl(photo);
-    return Boolean(hit?.startsWith("blob:"));
-  });
-  const [failed, setFailed] = useState(false);
+  const { src, loaded, failed, onLoad, onError, bindImg, hasPhoto } = useMediaDisplay(photo);
 
-  useEffect(() => {
-    setFailed(false);
-
-    const cached = getClientMediaUrl(photo);
-    if (cached?.startsWith("blob:")) {
-      setSrc(cached);
-      setLoaded(true);
-      return;
-    }
-
-    setSrc(mediaUrl(photo));
-    setLoaded(false);
-
-    if (!photo) return;
-
-    let cancelled = false;
-    void warmMediaBlob(photo).then((blob) => {
-      if (cancelled || !blob) return;
-      setSrc(blob);
-      setLoaded(true);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [photo]);
-
-  if (!photo || !src || failed) return <Placeholder />;
+  if (!hasPhoto || !src || failed) return <Placeholder />;
 
   return (
     <>
@@ -71,13 +38,15 @@ export default function ProfilePhoto({ photo, alt, priority = false }: ProfilePh
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        key={src}
+        ref={bindImg}
         src={src}
         alt={alt}
         decoding="async"
         loading={priority ? "eager" : "lazy"}
         fetchPriority={priority ? "high" : "auto"}
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
+        onLoad={onLoad}
+        onError={onError}
         className={`absolute inset-0 w-full h-full object-contain object-center transition-opacity duration-200 ${
           loaded ? "opacity-100" : "opacity-0"
         }`}

@@ -12,12 +12,12 @@ import {
   normalizeMediaInput,
   buildChatHref,
   getStashedChatRoomId,
+  parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
 
 function normalize(data: ProfileCard[] | ProfileCard | null | undefined): ProfileCard[] {
-  if (!data) return [];
-  return Array.isArray(data) ? data : [data];
+  return parseProfileCards(data);
 }
 
 export default function MessagesPage() {

@@ -7,6 +7,7 @@ import {
   extractError,
   getNotificationList,
   isLoggedIn,
+  markNotificationRead,
   type Notification,
 } from "@/lib/letsmeet";
 
@@ -104,6 +105,13 @@ export default function NotificationsPage() {
   const unread = items.filter((n) => !n.is_read);
   const earlier = items.filter((n) => n.is_read);
 
+  const markRead = async (id: number) => {
+    setItems((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    );
+    await markNotificationRead(id);
+  };
+
   return (
     <div className="mobile-shell flex flex-col min-h-screen bg-white">
       <LogoHeader
@@ -135,7 +143,7 @@ export default function NotificationsPage() {
               New
             </p>
             {unread.map((n) => (
-              <NotifRow key={n.id} n={n} />
+              <NotifRow key={n.id} n={n} onRead={() => markRead(n.id)} />
             ))}
           </div>
         )}
@@ -146,7 +154,7 @@ export default function NotificationsPage() {
               Earlier
             </p>
             {earlier.map((n) => (
-              <NotifRow key={n.id} n={n} />
+              <NotifRow key={n.id} n={n} onRead={() => markRead(n.id)} />
             ))}
           </div>
         )}
@@ -157,13 +165,17 @@ export default function NotificationsPage() {
   );
 }
 
-function NotifRow({ n }: { n: Notification }) {
+function NotifRow({ n, onRead }: { n: Notification; onRead: () => void }) {
   const type = notificationType(n.header);
   const icon = iconMap[type];
 
   return (
-    <div
-      className={`flex items-center gap-3 px-5 py-3.5 ${!n.is_read ? "bg-primary-light/40" : ""}`}
+    <button
+      type="button"
+      onClick={() => {
+        if (!n.is_read) onRead();
+      }}
+      className={`w-full flex items-center gap-3 px-5 py-3.5 text-left ${!n.is_read ? "bg-primary-light/40" : ""}`}
     >
       <div className="relative shrink-0">
         <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center text-lg font-bold text-primary">
@@ -189,6 +201,6 @@ function NotifRow({ n }: { n: Notification }) {
       {!n.is_read && (
         <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
       )}
-    </div>
+    </button>
   );
 }
