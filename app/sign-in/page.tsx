@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
-import { loginUser, extractError, setSession, normalizePhone } from "@/lib/letsmeet";
+import { loginUser, extractError, setSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -26,6 +26,7 @@ export default function SignInPage() {
         setError(extractError(login.data, "Invalid phone number or PIN."));
         return;
       }
+      resetDiscoverLocalState();
       setSession(login.data.token, {
         userId: login.data.user_id,
         phone: number,

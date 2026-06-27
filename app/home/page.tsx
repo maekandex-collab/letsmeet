@@ -6,18 +6,17 @@ import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ProfilePhoto from "@/components/ProfilePhoto";
 import {
-  getFeed,
   swipeProfile,
   prefetchMedia,
   isLoggedIn,
   readFeedSnapshot,
   writeFeedSnapshot,
-  filterSwipedCards,
   markSwipedCard,
   swipeTargetId,
-  parseProfileCards,
   extractError,
-  loadDiscoverPreferences,
+  clearFeedSnapshot,
+  resetDiscoverLocalState,
+  fetchDiscoverFeed,
   linkMatchRoomIds,
   extractRoomIdFromMatchResponse,
   type ProfileCard,
@@ -30,6 +29,7 @@ export default function HomePage() {
   const [animating, setAnimating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [swipeError, setSwipeError] = useState("");
+  const [feedError, setFeedError] = useState("");
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -39,7 +39,12 @@ export default function HomePage() {
     }
 
     const snapshot = readFeedSnapshot();
-    if (snapshot) {
+    const needsRefresh =
+      typeof window !== "undefined" && sessionStorage.getItem("lm_feed_refresh");
+    if (needsRefresh) {
+      sessionStorage.removeItem("lm_feed_refresh");
+      clearFeedSnapshot();
+    } else if (snapshot) {
       setCards(snapshot.cards);
       setLoading(false);
       prefetchMedia(snapshot.cards.map((c) => c.profile_photo), 12, 3);
@@ -48,23 +53,44 @@ export default function HomePage() {
 
     (async () => {
       try {
-        const prefs = loadDiscoverPreferences();
-        const res = await getFeed({
-          min_age: prefs.min_age,
-          max_age: prefs.max_age,
-          ...(prefs.religion ? { religion: prefs.religion } : {}),
-        });
-        if (res.ok) {
-          const fresh = filterSwipedCards(parseProfileCards(res.data));
-          setCards(fresh);
-          writeFeedSnapshot(fresh, 0);
-          prefetchMedia(fresh.map((c) => c.profile_photo), 12, 3);
+        const result = await fetchDiscoverFeed();
+        if (!result.ok) {
+          setFeedError(result.error ?? "Could not load profiles. Try again.");
+          return;
+        }
+        if (result.notice) setFeedError(result.notice);
+        else setFeedError("");
+        setCards(result.cards);
+        if (result.cards.length > 0) {
+          writeFeedSnapshot(result.cards, 0);
+          prefetchMedia(result.cards.map((c) => c.profile_photo), 12, 3);
         }
       } finally {
         setLoading(false);
       }
     })();
   }, [router]);
+
+  function handleClearFilters() {
+    resetDiscoverLocalState();
+    clearFeedSnapshot();
+    setFeedError("");
+    setCards([]);
+    setLoading(true);
+    void fetchDiscoverFeed().then((result) => {
+      setLoading(false);
+      if (!result.ok) {
+        setFeedError(result.error ?? "Could not load profiles.");
+        return;
+      }
+      if (result.notice) setFeedError(result.notice);
+      setCards(result.cards);
+      if (result.cards.length > 0) writeFeedSnapshot(result.cards, 0);
+      else if (!result.notice) {
+        setFeedError("No profiles available right now — the backend feed may be empty.");
+      }
+    });
+  }
 
   useEffect(() => {
     if (cards.length > 0) {
@@ -139,6 +165,12 @@ export default function HomePage() {
           )}
         </div>
 
+        {feedError && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
+            {feedError}
+          </p>
+        )}
+
         {swipeError && (
           <p className="text-xs text-red-500 mb-2 px-1">{swipeError}</p>
         )}
@@ -161,7 +193,19 @@ export default function HomePage() {
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-dark mb-1">No more profiles</h3>
-              <p className="text-sm text-muted">Check back later for new people to meet.</p>
+              <p className="text-sm text-muted mb-4">Check back later for new people to meet.</p>
+              <div className="flex flex-col gap-2 w-full max-w-xs">
+                <Link href="/filter" className="btn-secondary text-center text-sm py-2.5">
+                  Adjust filters
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="text-sm font-semibold text-primary"
+                >
+                  Reset filters &amp; refresh
+                </button>
+              </div>
             </div>
           )}
 

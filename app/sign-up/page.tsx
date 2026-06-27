@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
-import { createUser, loginUser, extractError, setSession, normalizePhone } from "@/lib/letsmeet";
+import { createUser, loginUser, extractError, setSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
 import { clearDraft, saveDraft } from "@/lib/profileDraft";
 
 export default function SignUpPage() {
@@ -56,6 +56,7 @@ export default function SignUpPage() {
       }
 
       clearDraft();
+      resetDiscoverLocalState();
       setSession(login.data.token, {
         userId: login.data.user_id,
         fullName: name.trim(),

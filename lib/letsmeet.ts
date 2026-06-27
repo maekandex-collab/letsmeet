@@ -78,6 +78,34 @@ export function clearSession(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  resetDiscoverLocalState();
+}
+
+/** Clear feed cache, swiped ids, and filter prefs — call on sign-up / sign-in / logout. */
+export function resetDiscoverLocalState(): void {
+  clearFeedSnapshot();
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("lm_swiped_targets");
+    localStorage.setItem(
+      "lm_discover_prefs",
+      JSON.stringify({ min_age: 18, max_age: 40, religion: "" })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+const USER_RELIGION_KEY = "lm_user_religion";
+
+/** User's own religion from onboarding — not the discover feed filter. */
+export function storeUserReligion(religion: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(USER_RELIGION_KEY, religion);
+  } catch {
+    // ignore
+  }
 }
 
 export function isLoggedIn(): boolean {
@@ -736,7 +764,15 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
 
 export function parseProfileCards(data: unknown): ProfileCard[] {
   if (!data) return [];
-  const list = Array.isArray(data) ? data : [data];
+  const list = Array.isArray(data)
+    ? data
+    : data && typeof data === "object"
+      ? ((data as { items?: unknown; results?: unknown; data?: unknown }).items ??
+        (data as { results?: unknown }).results ??
+        (data as { data?: unknown }).data ??
+        [])
+      : [data];
+  if (!Array.isArray(list)) return [];
   return list.map((item) =>
     normalizeProfileCard(
       item && typeof item === "object" ? (item as Record<string, unknown>) : {}
@@ -790,6 +826,7 @@ export interface ProfileUploadFields {
   profile_image: Blob;
   image1?: Blob | null;
   image2?: Blob | null;
+  religion?: string;
 }
 
 export interface Notification {
@@ -858,6 +895,7 @@ export function uploadProfile(fields: ProfileUploadFields) {
   form.append("profile_image", fields.profile_image, "profile.jpg");
   if (fields.image1) form.append("image1", fields.image1, "image1.jpg");
   if (fields.image2) form.append("image2", fields.image2, "image2.jpg");
+  if (fields.religion) form.append("religion", fields.religion);
   return request("/user/profile", { method: "POST", form, auth: true });
 }
 
@@ -906,6 +944,78 @@ export function storeDiscoverPreferences(prefs: DiscoverPreferences): void {
   } catch {
     // ignore
   }
+}
+
+/** Onboarding stored user religion in discover prefs by mistake — strip it. */
+export function sanitizeDiscoverPrefs(): DiscoverPreferences {
+  const prefs = loadDiscoverPreferences();
+  if (typeof window === "undefined") return prefs;
+  try {
+    const userReligion = localStorage.getItem(USER_RELIGION_KEY);
+    if (userReligion && prefs.religion === userReligion) {
+      const fixed = { ...prefs, religion: "" };
+      storeDiscoverPreferences(fixed);
+      return fixed;
+    }
+  } catch {
+    // ignore
+  }
+  return prefs;
+}
+
+export type DiscoverFeedResult = {
+  ok: boolean;
+  cards: ProfileCard[];
+  error?: string;
+  notice?: string;
+};
+
+/** Load discover feed — age filters only (religion filter disabled until backend supports it). */
+export async function fetchDiscoverFeed(): Promise<DiscoverFeedResult> {
+  const prefs = sanitizeDiscoverPrefs();
+  if (prefs.religion) {
+    storeDiscoverPreferences({ ...prefs, religion: "" });
+  }
+
+  const ageFilters: FeedFilters = { min_age: prefs.min_age, max_age: prefs.max_age };
+
+  const load = async (filters?: FeedFilters) => {
+    const res = await getFeed(filters);
+    const cards = res.ok ? filterSwipedCards(parseProfileCards(res.data)) : [];
+    return { res, cards };
+  };
+
+  const { res, cards } = await load(ageFilters);
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      cards: [],
+      error: extractError(res.data, "Could not load profiles. Try again."),
+    };
+  }
+
+  if (cards.length === 0) {
+    const bare = await load();
+    if (bare.cards.length > 0) {
+      return {
+        ok: true,
+        cards: bare.cards,
+        notice: "Showing all available profiles (age filter had no matches).",
+      };
+    }
+    const user = getUser();
+    const hint = user?.profileCompleted
+      ? "The server returned no profiles. The discover pool may be empty, or your profile may not be fully synced — try signing out and back in."
+      : "Finish setting up your profile to start discovering people.";
+    return {
+      ok: true,
+      cards: [],
+      notice: hint,
+    };
+  }
+
+  return { ok: true, cards };
 }
 
 export function getFeed(filters?: FeedFilters) {

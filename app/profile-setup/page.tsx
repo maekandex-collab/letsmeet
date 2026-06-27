@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import { InputField, SelectField } from "@/components/FormFields";
-import { uploadProfile, extractError, updateUser, getUser } from "@/lib/letsmeet";
+import { uploadProfile, extractError, updateUser, getUser, storeUserReligion } from "@/lib/letsmeet";
 import { getDraft, clearDraft, dataUrlToBlob } from "@/lib/profileDraft";
 
 export default function ProfileSetupPage() {
@@ -54,8 +54,9 @@ export default function ProfileSetupPage() {
         gender,
         interests: (draft.interests ?? []).join(", "),
         about_me: draft.about_me ?? "",
-        location: draft.location ?? "",
-        show_location: draft.show_location ?? false,
+        location: draft.location?.trim() || "Nigeria",
+        show_location: true,
+        religion: draft.religion,
         profile_image: mainBlob,
         image1,
         image2,
@@ -64,6 +65,7 @@ export default function ProfileSetupPage() {
       // The backend currently marks the profile complete even when it returns
       // a 500 on the image step, so we proceed unless it's a hard validation error.
       if (res.ok || res.status === 500) {
+        if (draft.religion) storeUserReligion(draft.religion);
         updateUser({ profileCompleted: true });
         clearDraft();
         router.push("/all-set");

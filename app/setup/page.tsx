@@ -72,7 +72,7 @@ export default function SetupPage() {
         about_me: bio,
         photos: photos.filter((p): p is string => !!p),
       });
-      router.push("/location");
+      router.push("/religion");
       return;
     }
     setStep((s) => s + 1);

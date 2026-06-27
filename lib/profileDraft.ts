@@ -1,5 +1,5 @@
 // Collects profile data across the multi-page onboarding flow
-// (setup -> location -> profile-setup) before a single multipart upload.
+// (setup -> religion -> profile-setup) before a single multipart upload.
 
 const KEY = "lm_profile_draft";
 
@@ -10,7 +10,9 @@ export interface ProfileDraft {
   about_me?: string;
   photos?: string[]; // data URLs (base64)
   gender?: string;
+  religion?: string;
   location?: string;
+  /** Always true during onboarding — location sharing stays on. */
   show_location?: boolean;
 }
 

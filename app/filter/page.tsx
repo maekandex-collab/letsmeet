@@ -81,7 +81,7 @@ export default function FilterPage() {
     const prefs: DiscoverPreferences = {
       min_age: ageMin,
       max_age: ageMax,
-      religion,
+      religion: "",
     };
 
     setSaving(true);
@@ -89,9 +89,12 @@ export default function FilterPage() {
 
     storeDiscoverPreferences(prefs);
     clearFeedSnapshot();
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("lm_feed_refresh", String(Date.now()));
+    }
 
     const res = await saveDiscoverPreferences(prefs);
-    if (!res.ok) {
+    if (!res.ok && res.status !== 404) {
       setError(extractError(res.data, "Saved locally; server preferences may not have updated."));
     }
 
@@ -152,6 +155,9 @@ export default function FilterPage() {
 
             <div className="input-group">
               <label className="input-label">Religion</label>
+              <p className="text-xs text-muted mb-2">
+                Saved for later — discover feed uses age only until the backend supports religion filtering.
+              </p>
               <div className="input-wrapper">
                 <select
                   className="input-field pl-4 pr-10 appearance-none"
