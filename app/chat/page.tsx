@@ -11,7 +11,7 @@ import {
 /** Redirect legacy query-string chat URLs to clean `/chat/{roomId}` paths. */
 function LegacyChatRedirect() {
   const router = useRouter();
-  const params = useSearchParams();
+  const params = useSearchParams(); 
 
   useEffect(() => {
     const id = params.get("id");
@@ -29,7 +29,7 @@ function LegacyChatRedirect() {
         user_id: id,
         name,
         location: "",
-        age: 0,
+        age: 0, 
         profile_photo: photo,
         chatroom_id: chatroomParam ?? undefined,
         room_id: roomId ?? undefined,

@@ -9,18 +9,20 @@ import {
   getSingleProfile,
   getMessageList,
   parseApiChatMessages,
-  getUser,
+  getNumericUserId,
   normalizeMediaInput,
   prefetchMedia,
   loadChatMessages,
   saveChatMessages,
   linkMatchRoomIds,
+  stashChatRoomId,
   readChatPeer,
   findMatchByRoomId,
   buildVideoCallHref,
+  resolveNumericRoomId,
   type StoredChatMessage,
 } from "@/lib/letsmeet";
-import { useChatSocket } from "@/lib/useChatSocket";
+import { useChatSocket, type WsIncomingMessage } from "@/lib/useChatSocket";
 import Avatar from "@/components/Avatar";
 
 type ChatMessage = StoredChatMessage;
@@ -30,7 +32,7 @@ function nowTime() {
 }
 
 interface ChatRoomProps {
-  roomId: number;
+  roomId: number | string;
 }
 
 export default function ChatRoom({ roomId }: ChatRoomProps) {
@@ -76,6 +78,10 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
           setPhoto(img);
           prefetchMedia([img], 1);
         }
+        const resolved = resolveNumericRoomId(match);
+        if (resolved != null) {
+          linkMatchRoomIds(resolved, [match.chatroom_id, roomId, match.id]);
+        }
       }
 
       setPeerLoading(false);
@@ -115,7 +121,19 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       const res = await getMessageList(roomId);
       if (cancelled || !res.ok) return;
 
-      const fromApi = parseApiChatMessages(res.data, getUser()?.userId ?? null);
+      if (res.data && typeof res.data === "object") {
+        const rawObj = res.data as Record<string, unknown>;
+        const items = rawObj.items;
+        if (Array.isArray(items) && items.length > 0) {
+          const first = items[0] as Record<string, unknown> | undefined;
+          const dbRoomId = Number(first?.room_id ?? first?.room);
+          if (Number.isFinite(dbRoomId) && dbRoomId > 0) {
+            stashChatRoomId(String(roomId), dbRoomId);
+          }
+        }
+      }
+
+      const fromApi = parseApiChatMessages(res.data, getNumericUserId());
       if (fromApi.length === 0) return;
 
       setMessages(fromApi);
@@ -132,18 +150,34 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     saveChatMessages(storageKey, messages);
   }, [storageKey, messages]);
 
-  const onIncoming = useCallback((text: string) => {
-    if (text === lastSentRef.current) return;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now() + Math.random(),
-        from: "them",
-        text,
-        time: nowTime(),
-        at: Date.now(),
-      },
-    ]);
+  const onIncoming = useCallback((msg: WsIncomingMessage) => {
+    const myNumericId = getNumericUserId();
+    const isMe = msg.senderId != null && myNumericId != null && String(msg.senderId) === String(myNumericId);
+
+    if (isMe) {
+      // Ignore our own WebSocket echoes as they are already optimistically rendered
+      return;
+    }
+
+    if (!msg.senderId && msg.text === lastSentRef.current) {
+      return;
+    }
+
+    setMessages((prev) => {
+      if (msg.messageId && prev.some((m) => m.id === msg.messageId)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: msg.messageId ?? (Date.now() + Math.random()),
+          from: "them",
+          text: msg.text,
+          time: nowTime(),
+          at: Date.now(),
+        },
+      ];
+    });
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
 

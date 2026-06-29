@@ -62,6 +62,25 @@ export function getUser(): SessionUser | null {
   }
 }
 
+/** Decodes the JWT token to extract the numeric user ID. */
+export function getNumericUserId(): number | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payloadBase64 = parts[1];
+    const jsonStr = typeof window !== "undefined"
+      ? window.atob(payloadBase64)
+      : Buffer.from(payloadBase64, "base64").toString("utf-8");
+    const payload = JSON.parse(jsonStr) as { user_id?: number };
+    const id = Number(payload.user_id);
+    return Number.isFinite(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export function setSession(token: string, user: SessionUser): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(TOKEN_KEY, token);
@@ -414,9 +433,12 @@ export function parseNumericRoomId(
   value: string | number | null | undefined
 ): number | null {
   if (value == null || value === "") return null;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value < 100000000 ? value : null;
+  }
   const s = String(value).trim();
   if (!/^\d+$/.test(s)) return null;
+  if (s.length >= 9) return null;
   const n = Number(s);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
@@ -428,6 +450,8 @@ export function extractRoomIdFromMatchResponse(data: {
 }): number | null {
   const fromRoom = parseNumericRoomId(data.room_id);
   if (fromRoom != null) return fromRoom;
+  const fromMatch = parseNumericRoomId(data.match_id);
+  if (fromMatch != null) return fromMatch;
   return parseNumericRoomId(data.chatroom_id);
 }
 
@@ -538,14 +562,25 @@ export function readChatPeer(): ChatPeerContext | null {
   }
 }
 
-export async function findMatchByRoomId(roomId: number): Promise<ProfileCard | null> {
+export async function findMatchByRoomId(
+  roomId: number | string
+): Promise<ProfileCard | null> {
   const res = await getMatchedList();
   if (!res.ok) return null;
   const cards = parseProfileCards(res.data);
-  return cards.find((c) => resolveNumericRoomId(c) === roomId) ?? null;
+  const s = String(roomId).trim();
+  const numeric = /^\d+$/.test(s) ? Number(s) : null;
+  return (
+    cards.find((c) => {
+      if (numeric !== null && resolveNumericRoomId(c) === numeric) return true;
+      if (c.chatroom_id && String(c.chatroom_id).trim() === s) return true;
+      if (c.user_id && String(c.user_id).trim() === s) return true;
+      return false;
+    }) ?? null
+  );
 }
 
-export function buildVideoCallHref(roomId: number): string {
+export function buildVideoCallHref(roomId: number | string): string {
   return `/video-call/${roomId}`;
 }
 
@@ -884,6 +919,13 @@ export function loginUser(number: string, pin: string) {
   });
 }
 
+export function forgetPassword(phone_number: string) {
+  return request<LoginResponse>("/forgot/password/", { 
+    method: "POST",
+    body: { phone_number},
+  });
+}
+
 export function uploadProfile(fields: ProfileUploadFields) {
   const form = new FormData();
   form.append("sexual_orientation", fields.sexual_orientation);
@@ -1085,7 +1127,7 @@ export function parseApiChatMessages(
           ? "me"
           : m.is_mine === false || m.is_sender === false
             ? "them"
-            : myUserId != null && senderId != null && senderId === myUserId
+            : myUserId != null && senderId != null && String(senderId) === String(myUserId)
               ? "me"
               : "them";
 
@@ -1214,12 +1256,20 @@ export function getMatchedList() {
 
 export function sendMessage(
   message: string,
-  roomId: number,
+  roomId: number | string,
   replyTo?: number | null
 ) {
+  let resolvedId = typeof roomId === "number" ? roomId : null;
+  if (resolvedId == null && typeof roomId === "string") {
+    resolvedId = getStashedChatRoomId(roomId);
+    if (resolvedId == null && /^\d+$/.test(roomId)) {
+      resolvedId = Number(roomId);
+    }
+  }
+
   return request<SendMessageResponse>("/message/send", {
     method: "POST",
-    body: { message, room_id: roomId, reply_to: replyTo ?? null },
+    body: { message, room_id: resolvedId ?? 0, reply_to: replyTo ?? null },
     auth: true,
   });
 }
@@ -1230,4 +1280,11 @@ export async function getNotificationList(page = 1, pageSize?: number) {
   const res = await request<unknown>(`/notification/list?${params}`, { auth: true });
   if (!res.ok) return res as ApiResult<PagedNotifications>;
   return { ...res, data: parseNotificationList(res.data) };
+}
+
+export function resetPassword(phone_number: string, pin: string) {
+  return request<unknown>("/reset/password/", {
+    method: "POST",
+    body: { phone_number, pin },
+  });
 }

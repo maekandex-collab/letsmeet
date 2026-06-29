@@ -12,6 +12,10 @@ const TRAILING_SLASH = new Set([
   "user/profile",
   "single/user/profile",
   "matched/list",
+  "forgot/password",
+  "change/password",
+  "reset/password",
+  "update_user/image",
 ]);
 
 function buildUpstreamUrl(segments: string[], search: string): string {

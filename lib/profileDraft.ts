@@ -29,13 +29,66 @@ export function getDraft(): ProfileDraft {
 
 export function saveDraft(patch: ProfileDraft): void {
   if (typeof window === "undefined") return;
-  const next = { ...getDraft(), ...patch };
-  window.localStorage.setItem(KEY, JSON.stringify(next));
+  try {
+    const next = { ...getDraft(), ...patch };
+    window.localStorage.setItem(KEY, JSON.stringify(next));
+  } catch (e) {
+    console.warn("Failed to save draft to localStorage:", e);
+  }
 }
 
 export function clearDraft(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
+}
+
+/** Resize and compress base64 images client-side before storing or uploading. */
+export function compressImage(
+  dataUrl: string,
+  maxW = 600,
+  maxH = 600
+): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(dataUrl);
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxW) {
+          height = Math.round((height * maxW) / width);
+          width = maxW;
+        }
+      } else {
+        if (height > maxH) {
+          width = Math.round((width * maxH) / height);
+          height = maxH;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      const compressed = canvas.toDataURL("image/jpeg", 0.7);
+      resolve(compressed);
+    };
+    img.onerror = () => {
+      resolve(dataUrl);
+    };
+    img.src = dataUrl;
+  });
 }
 
 /** Converts a base64 data URL into a Blob suitable for multipart upload. */

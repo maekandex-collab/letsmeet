@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { saveDraft } from "@/lib/profileDraft";
+import { saveDraft, compressImage } from "@/lib/profileDraft";
 
 const ORIENTATIONS = ["Straight", "Asexual", "Heterosexual", "Bisexual", "Others"];
 const SHOW_ME = ["Women", "Men", "Others"];
@@ -51,10 +51,12 @@ export default function SetupPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
+      const rawDataUrl = ev.target?.result as string;
+      const compressed = await compressImage(rawDataUrl);
       setPhotos((prev) => {
         const next = [...prev];
-        next[i] = ev.target?.result as string;
+        next[i] = compressed;
         return next;
       });
     };
