@@ -27,7 +27,7 @@ export default function ForgotPasswordPage() {
         setMessage(msg)
         setToast({ show: true, message: msg, type: "success" })
         setTimeout(() => {
-          router.push(`/otp?phone=${encodeURIComponent(phoneNumber)}`)
+          router.push(`/reset-password?phone=${encodeURIComponent(phoneNumber)}`)
         }, 1500)
       } else {
         const errMsg = data?.message || "Failed to request password reset.";

@@ -15,6 +15,7 @@ interface InputFieldProps {
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   inputMode?: "text" | "numeric" | "tel" | "email" | "search" | "url" | "decimal" | "none";
   maxLength?: number;
+  disabled?: boolean;
 }
 
 export function InputField({
@@ -32,6 +33,7 @@ export function InputField({
   onChange,
   inputMode,
   maxLength,
+  disabled,
 }: InputFieldProps) {
   return (
     <div className={`input-group ${className}`}>
@@ -53,6 +55,7 @@ export function InputField({
           onChange={onChange}
           inputMode={inputMode}
           maxLength={maxLength}
+          disabled={disabled}
           className={`input-field ${icon ? "pl-14" : "pl-4"} ${rightIcon ? "pr-12" : "pr-4"}`}
         />
         {rightIcon && (

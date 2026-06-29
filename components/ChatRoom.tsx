@@ -9,7 +9,7 @@ import {
   getSingleProfile,
   getMessageList,
   parseApiChatMessages,
-  getNumericUserId,
+  getUserId,
   normalizeMediaInput,
   prefetchMedia,
   loadChatMessages,
@@ -133,7 +133,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         }
       }
 
-      const fromApi = parseApiChatMessages(res.data, getNumericUserId());
+      const fromApi = parseApiChatMessages(res.data, getUserId());
       if (fromApi.length === 0) return;
 
       setMessages(fromApi);
@@ -151,8 +151,8 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   }, [storageKey, messages]);
 
   const onIncoming = useCallback((msg: WsIncomingMessage) => {
-    const myNumericId = getNumericUserId();
-    const isMe = msg.senderId != null && myNumericId != null && String(msg.senderId) === String(myNumericId);
+    const myUserId = getUserId();
+    const isMe = msg.senderId != null && myUserId != null && String(msg.senderId) === String(myUserId);
 
     if (isMe) {
       // Ignore our own WebSocket echoes as they are already optimistically rendered
@@ -206,7 +206,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         sendWs(text);
       }
 
-      const res = await sendMessage(text, roomId);
+      const res = await sendMessage(text, roomId, userId);
       if (!res.ok || res.data?.error) {
         setError(extractError(res.data, "Message failed to save."));
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));

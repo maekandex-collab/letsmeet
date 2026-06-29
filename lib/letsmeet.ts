@@ -81,6 +81,11 @@ export function getNumericUserId(): number | null {
   }
 }
 
+export function getUserId(): string | null {
+  const user = getUser();
+  return user?.userId ? String(user.userId) : null;
+}
+
 export function setSession(token: string, user: SessionUser): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(TOKEN_KEY, token);
@@ -1102,7 +1107,7 @@ export interface ApiChatMessage {
 
 export function parseApiChatMessages(
   data: unknown,
-  myUserId?: number | null
+  myUserId?: string | number | null
 ): StoredChatMessage[] {
   const list = Array.isArray(data)
     ? data
@@ -1256,20 +1261,16 @@ export function getMatchedList() {
 
 export function sendMessage(
   message: string,
-  roomId: number | string,
-  replyTo?: number | null
+  roomId: string | number,
+  replyTo?: string | number | null
 ) {
-  let resolvedId = typeof roomId === "number" ? roomId : null;
-  if (resolvedId == null && typeof roomId === "string") {
-    resolvedId = getStashedChatRoomId(roomId);
-    if (resolvedId == null && /^\d+$/.test(roomId)) {
-      resolvedId = Number(roomId);
-    }
-  }
-
   return request<SendMessageResponse>("/message/send", {
     method: "POST",
-    body: { message, room_id: resolvedId ?? 0, reply_to: replyTo ?? null },
+    body: {
+      message,
+      room_id: String(roomId),
+      reply_to: replyTo != null ? String(replyTo) : null,
+    },
     auth: true,
   });
 }
@@ -1286,5 +1287,12 @@ export function resetPassword(phone_number: string, pin: string) {
   return request<unknown>("/reset/password/", {
     method: "POST",
     body: { phone_number, pin },
+  });
+}
+
+export function updatePassword(number: string, pin: string, confirm_pin: string) {
+  return request<unknown>("/update/password/", {
+    method: "POST",
+    body: { number, pin, confirm_pin },
   });
 }

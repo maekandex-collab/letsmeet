@@ -1,18 +1,19 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
-import { resetPassword, extractError } from "@/lib/letsmeet";
+import { updatePassword, extractError } from "@/lib/letsmeet";
 
 function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const phone = searchParams.get("phone") || "";
-  const code = searchParams.get("code") || "";
+  const phoneParam = searchParams.get("phone") || "";
 
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState("");
@@ -23,6 +24,12 @@ function ResetPasswordContent() {
     type: "success",
   });
 
+  useEffect(() => {
+    if (phoneParam) {
+      setPhone(phoneParam);
+    }
+  }, [phoneParam]);
+
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ show: true, message, type });
     setTimeout(() => {
@@ -32,6 +39,14 @@ function ResetPasswordContent() {
 
   const handleResetPassword = async () => {
     setError("");
+    if (!phone) {
+      setError("Phone number is required.");
+      return;
+    }
+    if (otp.length < 6) {
+      setError("OTP must be 6 digits.");
+      return;
+    }
     if (pin.length < 6) {
       setError("PIN must be 6 digits.");
       return;
@@ -43,20 +58,20 @@ function ResetPasswordContent() {
 
     setLoading(true);
     try {
-      const res = await resetPassword(phone, pin);
+      const res = await updatePassword(phone, pin, confirmPin);
       const data = res.data as any;
       if (res.ok) {
-        showToast(data?.message || "PIN reset successfully! Redirecting to Sign In...", "success");
+        showToast(data?.message || "Password updated successfully! Redirecting to Sign In...", "success");
         setTimeout(() => {
           router.push("/sign-in");
         }, 2000);
       } else {
-        const errMsg = extractError(data, "Failed to reset PIN. Please try again.");
+        const errMsg = extractError(data, "Failed to update password. Please try again.");
         setError(errMsg);
         showToast(errMsg, "error");
       }
     } catch {
-      const errMsg = "Network error. Failed to reset PIN.";
+      const errMsg = "Network error. Failed to update password.";
       setError(errMsg);
       showToast(errMsg, "error");
     } finally {
@@ -64,7 +79,7 @@ function ResetPasswordContent() {
     }
   };
 
-  const isValid = pin.length === 6 && confirmPin.length === 6;
+  const isValid = phone.length >= 10 && otp.length === 6 && pin.length === 6 && confirmPin.length === 6;
 
   return (
     <div className="mobile-shell flex flex-col min-h-screen">
@@ -106,12 +121,51 @@ function ResetPasswordContent() {
           </svg>
         </div>
 
-        <h1 className="screen-title mb-2">Reset Security PIN</h1>
+        <h1 className="screen-title mb-2">Reset PIN</h1>
         <p className="screen-subtitle mb-8">
-          Create a new 6-digit PIN to secure your account login.
+          Enter the verification code and set your new 6-digit PIN.
         </p>
 
         <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+          <InputField
+            label="Phone Number"
+            id="phone"
+            type="tel"
+            name="phone"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              setError("");
+            }}
+            placeholder="e.g. 2348136819208"
+            disabled={!!phoneParam}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.63 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.63a16 16 0 0 0 6 6l.95-.97a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            }
+          />
+
+          <InputField
+            label="Verification Code (OTP)"
+            id="otp"
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={otp}
+            onChange={(e) => {
+              setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
+              setError("");
+            }}
+            placeholder="6-digit OTP code"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <rect x="5" y="11" width="14" height="10" rx="2" stroke="#616568" strokeWidth="2" />
+                <path d="M8 11V7C8 4.79 9.79 3 12 3C14.21 3 16 4.79 16 7V11" stroke="#616568" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            }
+          />
+
           <InputField
             label="New PIN"
             id="pin"
@@ -123,7 +177,7 @@ function ResetPasswordContent() {
               setPin(e.target.value.replace(/\D/g, "").slice(0, 6));
               setError("");
             }}
-            placeholder="6-digit PIN"
+            placeholder="New 6-digit PIN"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="11" width="18" height="11" rx="2" stroke="#616568" strokeWidth="2" />
@@ -143,7 +197,7 @@ function ResetPasswordContent() {
               setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6));
               setError("");
             }}
-            placeholder="Re-enter 6-digit PIN"
+            placeholder="Confirm new 6-digit PIN"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="11" width="18" height="11" rx="2" stroke="#616568" strokeWidth="2" />
