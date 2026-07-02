@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import { useState } from "react";
-import { forgetPassword } from "@/lib/letsmeet";
+import { forgetPassword, extractError } from "@/lib/letsmeet";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -21,22 +21,22 @@ export default function ForgotPasswordPage() {
     try {
       setLoading(true)
       const response = await forgetPassword(phoneNumber)
-      const data = response.data as any;
+      const data = response.data;
       if (response.ok) {
-        const msg = data?.message || "Reset OTP code sent successfully!";
+        const msg = extractError(data, "Reset OTP code sent successfully!");
         setMessage(msg)
         setToast({ show: true, message: msg, type: "success" })
         setTimeout(() => {
           router.push(`/reset-password?phone=${encodeURIComponent(phoneNumber)}`)
         }, 1500)
       } else {
-        const errMsg = data?.message || "Failed to request password reset.";
+        const errMsg = extractError(data, "Failed to request password reset.");
         setMessage(errMsg)
         setToast({ show: true, message: errMsg, type: "error" })
         setTimeout(() => setToast(t => ({ ...t, show: false })), 3000)
       }
       setLoading(false)
-    } catch (error) {
+    } catch {
       setMessage("An unexpected error occurred.")
       setToast({ show: true, message: "An unexpected error occurred.", type: "error" })
       setTimeout(() => setToast(t => ({ ...t, show: false })), 3000)

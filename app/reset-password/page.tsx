@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import { updatePassword, extractError } from "@/lib/letsmeet";
@@ -59,9 +58,9 @@ function ResetPasswordContent() {
     setLoading(true);
     try {
       const res = await updatePassword(phone, pin, confirmPin);
-      const data = res.data as any;
+      const data = res.data;
       if (res.ok) {
-        showToast(data?.message || "Password updated successfully! Redirecting to Sign In...", "success");
+        showToast(extractError(data, "Password updated successfully! Redirecting to Sign In..."), "success");
         setTimeout(() => {
           router.push("/sign-in");
         }, 2000);

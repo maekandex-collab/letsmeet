@@ -2,9 +2,8 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { BackHeader } from "@/components/Header";
-import { forgetPassword } from "@/lib/letsmeet";
+import { forgetPassword, extractError } from "@/lib/letsmeet";
 
 function OtpContent() {
   const router = useRouter();
@@ -85,11 +84,11 @@ function OtpContent() {
     try {
       setResending(true);
       const res = await forgetPassword(phone);
-      const data = res.data as any;
+      const data = res.data;
       if (res.ok) {
-        showToast(data?.message || "Verification code resent successfully!", "success");
+        showToast(extractError(data, "Verification code resent successfully!"), "success");
       } else {
-        showToast(data?.message || "Failed to resend code.", "error");
+        showToast(extractError(data, "Failed to resend code."), "error");
       }
     } catch {
       showToast("Network error. Failed to resend code.", "error");
