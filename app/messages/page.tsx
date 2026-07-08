@@ -1,15 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
+
+import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import Avatar from "@/components/Avatar";
+import ConversationRow, { ConversationRowSkeleton } from "@/components/ConversationRow";
+import UnreadBadge from "@/components/UnreadBadge";
+import {
+  getInboxEntry,
+  hydrateInboxFromApi,
+  upsertInboxPeer,
+} from "@/lib/chatInbox";
+import { useInboxMap, useTotalUnread } from "@/lib/useInboxUnread";
 import {
   getMatchedList,
+  getMessageList,
+  parseApiChatMessages,
   prefetchMedia,
-  stashChatPeer,
-  buildChatHref,
+  chatRoomKey,
   parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
@@ -18,46 +26,96 @@ function normalize(data: ProfileCard[] | ProfileCard | null | undefined): Profil
   return parseProfileCards(data);
 }
 
+function inboxKeyForMatch(match: ProfileCard): string {
+  return chatRoomKey(match);
+}
+
 export default function MessagesPage() {
   const pathname = usePathname();
   const [matches, setMatches] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hydrating, setHydrating] = useState(false);
   const [query, setQuery] = useState("");
   const [avatarEpoch, setAvatarEpoch] = useState(0);
+  const inboxMap = useInboxMap();
+  const totalUnread = useTotalUnread();
+
+  const loadMatches = useCallback(async () => {
+    const res = await getMatchedList();
+    if (res.ok) {
+      const list = normalize(res.data);
+      setMatches(list);
+      prefetchMedia(list.map((c) => c.profile_photo));
+      for (const m of list) {
+        upsertInboxPeer(inboxKeyForMatch(m), {
+          userId: m.user_id,
+          name: m.name,
+          photo: m.profile_photo,
+        });
+      }
+      return list;
+    }
+    return [];
+  }, []);
+
+  const hydratePreviews = useCallback(async (list: ProfileCard[]) => {
+    if (list.length === 0) return;
+    setHydrating(true);
+    const roomIds = list.map((m) => chatRoomKey(m));
+    await hydrateInboxFromApi(roomIds, async (roomId) => {
+      const res = await getMessageList(roomId, 1);
+      if (!res.ok) return [];
+      return parseApiChatMessages(res.data);
+    });
+    setHydrating(false);
+  }, []);
 
   useEffect(() => {
     (async () => {
-      const res = await getMatchedList();
-      if (res.ok) {
-        const list = normalize(res.data);
-        setMatches(list);
-        prefetchMedia(list.map((c) => c.profile_photo));
-      }
+      const list = await loadMatches();
       setLoading(false);
+      void hydratePreviews(list);
     })();
-  }, []);
+  }, [loadMatches, hydratePreviews]);
 
   useEffect(() => {
     if (pathname !== "/messages") return;
     setAvatarEpoch((n) => n + 1);
-  }, [pathname]);
+    void (async () => {
+      const list = await loadMatches();
+      await hydratePreviews(list);
+    })();
+  }, [pathname, loadMatches, hydratePreviews]);
 
-  useEffect(() => {
-    if (pathname === "/messages" && matches.length > 0) {
-      prefetchMedia(matches.map((c) => c.profile_photo));
-    }
-  }, [pathname, matches, avatarEpoch]);
+  const filtered = matches
+    .filter((m) => m.name.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => {
+      const aKey = inboxKeyForMatch(a);
+      const bKey = inboxKeyForMatch(b);
+      const aAt = getInboxEntry(aKey)?.lastAt ?? 0;
+      const bAt = getInboxEntry(bKey)?.lastAt ?? 0;
+      return bAt - aAt;
+    });
 
-  const filtered = matches.filter((m) =>
-    m.name.toLowerCase().includes(query.toLowerCase())
-  );
+  const totalUnreadDisplay = totalUnread;
 
   return (
-    <div className="mobile-shell flex flex-col min-h-screen">
+    <div className="mobile-shell flex flex-col min-h-dvh">
       <LogoHeader />
-      <div className="flex-1 overflow-y-auto pt-20 pb-28">
-        {/* Search */}
-        <div className="px-5 py-3">
+      <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
+        <div className="px-5 pt-2 pb-1 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-dark">Messages</h1>
+            {totalUnreadDisplay > 0 && (
+              <p className="text-sm text-primary font-medium mt-0.5">
+                {totalUnreadDisplay} unread
+              </p>
+            )}
+          </div>
+          <UnreadBadge count={totalUnreadDisplay} />
+        </div>
+
+        <div className="px-5 py-3 sticky top-[var(--header-h)] bg-white z-10">
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -76,44 +134,44 @@ export default function MessagesPage() {
         </div>
 
         {loading ? (
-          <p className="px-5 py-6 text-sm text-muted">Loading conversations…</p>
+          <div className="mt-2">
+            {[1, 2, 3, 4].map((i) => (
+              <ConversationRowSkeleton key={i} />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="px-5 py-12 text-center">
             <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center mx-auto mb-3">
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#F759F5" strokeWidth="2" strokeLinejoin="round" />
+                <path
+                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  stroke="#F759F5"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                />
               </svg>
             </div>
-            <p className="text-sm text-muted">No conversations yet. Match with someone to start chatting!</p>
+            <p className="text-sm text-muted">
+              {query
+                ? "No conversations match your search."
+                : "No conversations yet. Match with someone to start chatting!"}
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col">
-            {filtered.map((c) => (
-                <Link
-                  key={c.user_id}
-                  href={buildChatHref(c)}
-                  onClick={() => stashChatPeer(c)}
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-border/40 transition-colors border-b border-border last:border-b-0"
-                >
-                  <Avatar
-                    key={`${c.user_id}-${avatarEpoch}`}
-                    photo={c.profile_photo}
-                    name={c.name}
-                    size="md"
-                    priority
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-base font-bold text-dark truncate">{c.name}</p>
-                    </div>
-                    <p className="text-sm text-muted truncate mt-0.5">
-                      {c.location && c.location.toLowerCase() !== "string"
-                        ? c.location
-                        : "Tap to start chatting"}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+          <div className="mt-1 pb-4">
+            {hydrating && (
+              <p className="text-xs text-muted text-center py-2">Updating conversations…</p>
+            )}
+            {filtered.map((c) => {
+              const key = inboxKeyForMatch(c);
+              return (
+                <ConversationRow
+                  key={`${c.user_id}-${avatarEpoch}`}
+                  match={c}
+                  inbox={inboxMap[key] ?? getInboxEntry(key)}
+                />
+              );
+            })}
           </div>
         )}
       </div>

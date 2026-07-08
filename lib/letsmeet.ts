@@ -667,6 +667,14 @@ export function buildChatHref(card: ProfileCard): string {
   return roomId != null ? `/chat/${roomId}` : "/chat/pending";
 }
 
+/** Stable inbox / storage key for a match conversation. */
+export function chatRoomKey(card: ProfileCard): string {
+  const numeric = resolveNumericRoomId(card);
+  if (numeric != null) return String(numeric);
+  if (card.chatroom_id) return String(card.chatroom_id).trim();
+  return String(card.id);
+}
+
 // ─── Chat history (API + local fallback) ─────────────────────────────────────
 
 export interface StoredChatMessage {
@@ -675,6 +683,7 @@ export interface StoredChatMessage {
   text: string;
   time: string;
   at: number;
+  isRead?: boolean;
 }
 
 const CHAT_MSG_PREFIX = "lm_chat_msgs_";
@@ -1242,6 +1251,7 @@ export interface ApiChatMessage {
   user_id?: number;
   is_mine?: boolean;
   is_sender?: boolean;
+  is_read?: boolean;
   created_at?: string;
   timestamp?: string;
 }
@@ -1286,6 +1296,7 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
         text,
         time,
         at: Number.isFinite(at) ? at : Date.now() + index,
+        isRead: m.is_read,
       } satisfies StoredChatMessage;
     })
     .filter((m): m is StoredChatMessage => m != null)

@@ -216,7 +216,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mobile-shell flex flex-col min-h-screen bg-white">
+    <div className="mobile-shell flex flex-col min-h-dvh bg-white">
       <LogoHeader
         right={
           <button
@@ -232,7 +232,7 @@ export default function AccountPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto pt-20 pb-28 px-5">
+      <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav px-5">
         {loading ? (
           <div className="flex flex-col items-center pt-16 gap-4">
             <div className="w-24 h-24 rounded-full bg-[#F5F5F5] animate-pulse" />

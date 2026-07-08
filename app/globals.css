@@ -13,13 +13,21 @@
   background: transparent;
 }
 
+:root {
+  --header-h: 4.5rem;
+  --bottom-nav-h: 4.5rem;
+  --composer-h: 4rem;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
 body {
   font-family: "Urbanist", sans-serif;
   background: #ffffff;
   color: #12151C;
   max-width: 600px;
   margin: 0 auto;
-  min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
 }
 
@@ -90,10 +98,31 @@ input[type=number] {
   -moz-appearance: textfield;
 }
 
+@layer utilities {
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+  .h-dvh {
+    height: 100dvh;
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-header {
+    padding-top: var(--header-h);
+  }
+  .pb-bottom-nav {
+    padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @layer components {
   /* Mobile shell — centered, max 600px */
   .mobile-shell {
-    @apply max-w-mobile mx-auto min-h-screen bg-white relative overflow-x-hidden;
+    @apply max-w-mobile mx-auto min-h-dvh bg-white relative overflow-x-hidden;
   }
   /* Horizontal screen padding */
   .px-screen {
@@ -141,11 +170,12 @@ input[type=number] {
   }
   /* Fixed bottom action bar */
   .bottom-bar {
-    @apply fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 pb-6 pt-3 flex gap-4 items-center z-50;
+    @apply fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 pt-3 flex gap-4 items-center z-50 pb-safe;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
   }
   /* App header */
   .app-header {
-    @apply fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 py-3 flex items-center justify-between z-50 shadow-header;
+    @apply fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 py-3 flex items-center justify-between z-50 shadow-header pt-safe;
   }
   /* Bottom nav tab */
   .tab-item {

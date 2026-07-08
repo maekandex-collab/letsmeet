@@ -4,7 +4,7 @@ import BottomNav from "@/components/BottomNav";
 
 export default function DiscoverPage() {
   return (
-    <div className="mobile-shell flex flex-col min-h-screen">
+    <div className="mobile-shell flex flex-col min-h-dvh">
       <BackHeader
         title="Discover"
         right={
@@ -15,7 +15,7 @@ export default function DiscoverPage() {
           </Link>
         }
       />
-      <div className="flex-1 flex flex-col pt-20 pb-28">
+      <div className="flex-1 flex flex-col pt-header pb-bottom-nav">
         {/* Location bar */}
         <div className="px-5 py-3 flex items-center justify-between border-b border-border">
           <div className="flex items-center gap-2">

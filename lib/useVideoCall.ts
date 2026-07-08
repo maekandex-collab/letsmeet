@@ -2,16 +2,31 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { callWsUrl } from "@/lib/letsmeet";
+import {
+  clearCallAccepted,
+  isCallAccepted,
+  takePendingCallOffer,
+} from "@/lib/incomingCall";
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export function useVideoCall(roomId: string | number | null) {
+interface UseVideoCallOptions {
+  /** User tapped Accept on the incoming-call screen */
+  acceptIncoming?: boolean;
+}
+
+export function useVideoCall(
+  roomId: string | number | null,
+  options: UseVideoCallOptions = {}
+) {
+  const { acceptIncoming = false } = options;
   const [status, setStatus] = useState("Connecting…");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inCall, setInCall] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -19,6 +34,22 @@ export function useVideoCall(roomId: string | number | null) {
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inCallRef = useRef(false);
+  const roomIdRef = useRef(roomId);
+  roomIdRef.current = roomId;
+
+  useEffect(() => {
+    inCallRef.current = inCall;
+  }, [inCall]);
+
+  const stopRetry = useCallback(() => {
+    if (retryRef.current) {
+      clearInterval(retryRef.current);
+      retryRef.current = null;
+    }
+  }, []);
 
   const attachLocal = useCallback((stream: MediaStream) => {
     if (localVideoRef.current) localVideoRef.current.srcObject = stream;
@@ -72,17 +103,41 @@ export function useVideoCall(roomId: string | number | null) {
       if (pc.connectionState === "connected") {
         setStatus("Connected");
         setInCall(true);
+        setIncomingCall(false);
+        stopRetry();
       } else if (pc.connectionState === "failed") {
         setStatus("Connection failed");
-      } else {
+      } else if (pc.connectionState !== "closed") {
         setStatus(pc.connectionState);
       }
     };
 
     return pc;
-  }, [attachRemote, initMedia]);
+  }, [attachRemote, initMedia, stopRetry]);
+
+  const answerOffer = useCallback(
+    async (offer: RTCSessionDescriptionInit) => {
+      const ws = socketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+      try {
+        const pc = await createPeer();
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: "answer", answer }));
+        setStatus("Connecting…");
+        setIncomingCall(false);
+        pendingOfferRef.current = null;
+      } catch {
+        setStatus("Could not answer call");
+      }
+    },
+    [createPeer]
+  );
 
   const endCall = useCallback(() => {
+    stopRetry();
     peerRef.current?.close();
     peerRef.current = null;
 
@@ -96,10 +151,34 @@ export function useVideoCall(roomId: string | number | null) {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
 
     setInCall(false);
+    setIncomingCall(false);
     setIsMuted(false);
     setIsCameraOff(false);
     setStatus("Call ended");
-  }, []);
+    pendingOfferRef.current = null;
+
+    const id = roomIdRef.current;
+    if (id != null) clearCallAccepted(id);
+  }, [stopRetry]);
+
+  const sendOffer = useCallback(async () => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+
+    const existing = peerRef.current;
+    if (existing?.localDescription) {
+      ws.send(
+        JSON.stringify({ type: "offer", offer: existing.localDescription.toJSON() })
+      );
+      return true;
+    }
+
+    const pc = await createPeer();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({ type: "offer", offer }));
+    return true;
+  }, [createPeer]);
 
   const startCall = useCallback(async () => {
     const ws = socketRef.current;
@@ -107,12 +186,45 @@ export function useVideoCall(roomId: string | number | null) {
       setStatus("Waiting for server…");
       return;
     }
-    const pc = await createPeer();
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify({ type: "offer", offer }));
+
+    ws.send(JSON.stringify({ type: "ring" }));
+    const sent = await sendOffer();
+    if (!sent) return;
+
     setStatus("Calling…");
-  }, [createPeer]);
+    stopRetry();
+    retryRef.current = setInterval(() => {
+      void (async () => {
+        const open = socketRef.current?.readyState === WebSocket.OPEN;
+        if (!open || inCallRef.current) return;
+        ws.send(JSON.stringify({ type: "ring" }));
+        await sendOffer();
+      })();
+    }, 4000);
+  }, [sendOffer, stopRetry]);
+
+  const acceptCall = useCallback(async () => {
+    const offer =
+      pendingOfferRef.current ??
+      (roomIdRef.current != null ? takePendingCallOffer(roomIdRef.current) : null);
+    if (!offer) {
+      setStatus("Waiting for caller…");
+      setIncomingCall(false);
+      return;
+    }
+    await answerOffer(offer);
+  }, [answerOffer]);
+
+  const declineCall = useCallback(() => {
+    const ws = socketRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "reject" }));
+    }
+    pendingOfferRef.current = null;
+    setIncomingCall(false);
+    setStatus("Call declined");
+    if (roomIdRef.current != null) clearCallAccepted(roomIdRef.current);
+  }, []);
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
@@ -138,6 +250,11 @@ export function useVideoCall(roomId: string | number | null) {
     });
   }, []);
 
+  const shouldAutoAnswer = useCallback(
+    (id: string | number) => acceptIncoming || isCallAccepted(id),
+    [acceptIncoming]
+  );
+
   useEffect(() => {
     const id =
       roomId == null
@@ -153,7 +270,19 @@ export function useVideoCall(roomId: string | number | null) {
     const ws = new WebSocket(callWsUrl(id));
     socketRef.current = ws;
 
-    ws.onopen = () => setStatus("Ready — tap Start Call");
+    ws.onopen = () => {
+      if (shouldAutoAnswer(id)) {
+        const pending = takePendingCallOffer(id);
+        if (pending) {
+          setStatus("Joining call…");
+          void answerOffer(pending);
+          return;
+        }
+        setStatus("Joining call…");
+      } else {
+        setStatus("Ready — tap Start Call");
+      }
+    };
 
     ws.onmessage = async (event) => {
       let data: {
@@ -168,19 +297,32 @@ export function useVideoCall(roomId: string | number | null) {
         return;
       }
 
+      if (data.type === "ring") {
+        if (!inCallRef.current && !shouldAutoAnswer(id)) {
+          setIncomingCall(true);
+          setStatus("Incoming call…");
+        }
+        return;
+      }
+
       if (data.type === "offer" && data.offer) {
-        const pc = await createPeer();
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: "answer", answer }));
-        setStatus("Answering…");
+        pendingOfferRef.current = data.offer;
+        if (shouldAutoAnswer(id)) {
+          await answerOffer(data.offer);
+        } else {
+          setIncomingCall(true);
+          setStatus("Incoming call…");
+        }
       } else if (data.type === "answer" && data.answer) {
         const pc = peerRef.current;
         if (pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
           setStatus("Connected");
+          stopRetry();
         }
+      } else if (data.type === "reject") {
+        stopRetry();
+        setStatus("Call declined");
       } else if (data.type === "ice" && data.candidate && peerRef.current) {
         try {
           await peerRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -197,16 +339,19 @@ export function useVideoCall(roomId: string | number | null) {
       socketRef.current = null;
       endCall();
     };
-  }, [roomId, createPeer, endCall]);
+  }, [roomId, answerOffer, endCall, shouldAutoAnswer, stopRetry]);
 
   return {
     status,
     inCall,
+    incomingCall,
     isMuted,
     isCameraOff,
     localVideoRef,
     remoteVideoRef,
     startCall,
+    acceptCall,
+    declineCall,
     endCall,
     toggleMute,
     toggleCamera,

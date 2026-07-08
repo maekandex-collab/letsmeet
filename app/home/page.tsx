@@ -154,7 +154,7 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex flex-col px-3 sm:px-4 pt-20 pb-20" style={{ height: "100dvh" }}>
+      <div className="flex flex-col px-3 sm:px-4 pt-header pb-bottom-nav h-dvh">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold text-dark">Discover</h2>

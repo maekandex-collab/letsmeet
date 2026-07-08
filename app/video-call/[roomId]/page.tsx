@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useVideoCall } from "@/lib/useVideoCall";
 import {
@@ -10,11 +10,14 @@ import {
   parseNumericRoomId,
   readChatPeer,
 } from "@/lib/letsmeet";
+import IncomingCallOverlay from "@/components/IncomingCallOverlay";
 
 function VideoCallContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const segment = String(params.roomId ?? "").trim();
   const roomId = segment ? (parseNumericRoomId(segment) ?? segment) : null;
+  const acceptIncoming = searchParams.get("accept") === "1";
   const [name, setName] = useState("Video call");
 
   useEffect(() => {
@@ -39,18 +42,21 @@ function VideoCallContent() {
   const {
     status,
     inCall,
+    incomingCall,
     isMuted,
     isCameraOff,
     localVideoRef,
     remoteVideoRef,
     startCall,
+    acceptCall,
+    declineCall,
     endCall,
     toggleMute,
     toggleCamera,
-  } = useVideoCall(roomId);
+  } = useVideoCall(roomId, { acceptIncoming });
 
   return (
-    <div className="mobile-shell flex flex-col h-screen bg-dark relative overflow-hidden">
+    <div className="mobile-shell flex flex-col min-h-dvh bg-dark relative overflow-hidden">
       <video
         ref={remoteVideoRef}
         autoPlay
@@ -58,7 +64,7 @@ function VideoCallContent() {
         className="absolute inset-0 w-full h-full object-cover bg-[#1a2030]"
       />
 
-      {!inCall && (
+      {!inCall && !incomingCall && (
         <div className="absolute inset-0 bg-[#1a2030]/90 flex flex-col items-center justify-center z-[1] px-8 text-center">
           <div className="w-24 h-24 rounded-full bg-[#2a2a40] flex items-center justify-center mb-4">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
@@ -68,7 +74,7 @@ function VideoCallContent() {
           </div>
           <p className="text-white font-bold text-lg mb-1">{name}</p>
           <p className="text-white/60 text-sm mb-6">{status}</p>
-          {roomId != null && (
+          {roomId != null && !acceptIncoming && (
             <button
               onClick={() => void startCall()}
               className="btn-primary px-8"
@@ -77,6 +83,15 @@ function VideoCallContent() {
             </button>
           )}
         </div>
+      )}
+
+      {incomingCall && !inCall && (
+        <IncomingCallOverlay
+          name={name}
+          photo={null}
+          onAccept={() => void acceptCall()}
+          onDecline={declineCall}
+        />
       )}
 
       <video
@@ -170,7 +185,7 @@ export default function VideoCallRoomPage() {
   return (
     <Suspense
       fallback={
-        <div className="mobile-shell h-screen flex items-center justify-center text-white bg-dark">
+        <div className="mobile-shell min-h-dvh flex items-center justify-center text-white bg-dark">
           Loading…
         </div>
       }

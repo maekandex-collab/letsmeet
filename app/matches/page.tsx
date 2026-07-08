@@ -179,7 +179,7 @@ export default function MatchesPage() {
   }
 
   return (
-    <div className="mobile-shell flex flex-col min-h-screen bg-white">
+    <div className="mobile-shell flex flex-col min-h-dvh bg-white">
       <LogoHeader
         right={
           <span className="text-xs font-bold text-white bg-primary px-3 py-1.5 rounded-full">
@@ -188,7 +188,7 @@ export default function MatchesPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto pt-20 pb-28">
+      <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
         <section className="mb-8">
           <div className="flex items-center justify-between px-5 mb-4">
             <h2 className="text-base font-bold text-dark">Liked You</h2>

@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTotalUnread } from "@/lib/useInboxUnread";
+import UnreadBadge from "@/components/UnreadBadge";
 
 const tabs = [
   {
@@ -87,15 +89,24 @@ const tabs = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const totalUnread = useTotalUnread();
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white border-t border-border z-50">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white border-t border-border z-50 pb-safe">
       <div className="flex items-center">
         {tabs.map((tab) => {
           const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
+          const showBadge = tab.href === "/messages" && totalUnread > 0;
           return (
-            <Link key={tab.href} href={tab.href} className={`flex flex-col items-center gap-0.5 flex-1 py-3 text-xs font-medium transition-colors ${active ? "text-primary" : "text-muted"}`}>
-              {tab.icon(active)}
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={`relative flex flex-col items-center gap-0.5 flex-1 py-3 text-xs font-medium transition-colors ${active ? "text-primary" : "text-muted"}`}
+            >
+              <span className="relative inline-flex">
+                {tab.icon(active)}
+                {showBadge && <UnreadBadge count={totalUnread} dot />}
+              </span>
               <span>{tab.label}</span>
             </Link>
           );

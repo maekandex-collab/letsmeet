@@ -1,10 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import RouteLoader from "@/components/RouteLoader";
 
 export const metadata: Metadata = {
   title: "LetsMeet ♥ Match, Chat, Love!",
   description: "Find your perfect match with LetsMeet dating app.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -13,7 +13,7 @@ interface BackHeaderProps {
 export function BackHeader({ title, subtitle, right, onBack, backHref }: BackHeaderProps) {
   const router = useRouter();
   return (
-    <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile px-4 py-4 flex items-center justify-between z-50">
+    <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile px-4 py-4 flex items-center justify-between z-50 pt-safe">
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
           onClick={() => onBack ? onBack() : backHref ? router.push(backHref) : router.back()}

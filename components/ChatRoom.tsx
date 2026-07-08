@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   sendMessage,
   extractError,
@@ -23,12 +24,30 @@ import {
   type StoredChatMessage,
 } from "@/lib/letsmeet";
 import { useChatSocket, type WsIncomingMessage } from "@/lib/useChatSocket";
+import { useIncomingCall } from "@/lib/useIncomingCall";
+import { markCallAccepted } from "@/lib/incomingCall";
+import {
+  formatDateSeparator,
+  markRoomRead,
+  syncInboxFromMessages,
+  upsertInboxPeer,
+} from "@/lib/chatInbox";
+import IncomingCallOverlay from "@/components/IncomingCallOverlay";
+import ChatComposer from "@/components/ChatComposer";
 import Avatar from "@/components/Avatar";
 
 type ChatMessage = StoredChatMessage;
 
+const COMPOSER_OFFSET =
+  "calc(var(--composer-h) + env(safe-area-inset-bottom, 0px) + 0.75rem)";
+
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function scrollToBottom(el: HTMLElement | null, smooth = true) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "end" });
 }
 
 interface ChatRoomProps {
@@ -36,6 +55,7 @@ interface ChatRoomProps {
 }
 
 export default function ChatRoom({ roomId }: ChatRoomProps) {
+  const router = useRouter();
   const [name, setName] = useState("Chat");
   const [userId, setUserId] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
@@ -45,10 +65,33 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [peerLoading, setPeerLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string>("");
 
   const storageKey = String(roomId);
+
+  const peerMeta = useCallback(
+    () => ({ userId, name, photo }),
+    [userId, name, photo]
+  );
+
+  const scrollBottom = useCallback((smooth = true) => {
+    requestAnimationFrame(() => scrollToBottom(bottomRef.current, smooth));
+  }, []);
+
+  useEffect(() => {
+    markRoomRead(roomId);
+    upsertInboxPeer(roomId, peerMeta());
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        markRoomRead(roomId);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [roomId, peerMeta]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,11 +102,14 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         if (!cancelled) {
           setName(peer.name || "Chat");
           setUserId(peer.userId);
-          const img =
-            peer.photo ??
-            getChatPhoto(roomId, peer.userId);
+          const img = peer.photo ?? getChatPhoto(roomId, peer.userId);
           setPhoto(img);
           if (img) prefetchMedia([img], 1);
+          upsertInboxPeer(roomId, {
+            userId: peer.userId,
+            name: peer.name,
+            photo: img,
+          });
         }
       }
 
@@ -78,6 +124,11 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
           setPhoto(img);
           prefetchMedia([img], 1);
         }
+        upsertInboxPeer(roomId, {
+          userId: match.user_id,
+          name: match.name,
+          photo: img,
+        });
         const resolved = resolveNumericRoomId(match);
         if (resolved != null) {
           linkMatchRoomIds(resolved, [match.chatroom_id, roomId, match.id]);
@@ -105,21 +156,33 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
           setPhoto(img);
           prefetchMedia([img], 1);
         }
+        upsertInboxPeer(roomId, {
+          userId,
+          name: res.data.profile.name,
+          photo: img,
+        });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, roomId]);
 
   useEffect(() => {
     const local = loadChatMessages(storageKey);
-    setMessages(local);
+    if (local.length > 0) {
+      setMessages(local);
+      syncInboxFromMessages(roomId, local, peerMeta());
+      scrollBottom(false);
+    }
 
     let cancelled = false;
     (async () => {
       const res = await getMessageList(roomId);
-      if (cancelled || !res.ok) return;
+      if (cancelled) return;
+      setHistoryLoading(false);
+
+      if (!res.ok) return;
 
       if (res.data && typeof res.data === "object") {
         const rawObj = res.data as Record<string, unknown>;
@@ -138,52 +201,64 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
       setMessages(fromApi);
       saveChatMessages(storageKey, fromApi);
+      syncInboxFromMessages(roomId, fromApi, peerMeta());
+      markRoomRead(roomId);
+      scrollBottom(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [storageKey, roomId]);
+  }, [storageKey, roomId, peerMeta, scrollBottom]);
 
   useEffect(() => {
     if (messages.length === 0) return;
     saveChatMessages(storageKey, messages);
-  }, [storageKey, messages]);
+    syncInboxFromMessages(roomId, messages, peerMeta());
+  }, [storageKey, roomId, messages, peerMeta]);
 
-  const onIncoming = useCallback((msg: WsIncomingMessage) => {
-    if (isOwnSenderId(msg.senderId)) {
-      return;
-    }
+  const onIncoming = useCallback(
+    (msg: WsIncomingMessage) => {
+      if (isOwnSenderId(msg.senderId)) return;
+      if (!msg.senderId && msg.text === lastSentRef.current) return;
 
-    if (!msg.senderId && msg.text === lastSentRef.current) {
-      return;
-    }
+      setMessages((prev) => {
+        if (msg.messageId && prev.some((m) => m.id === msg.messageId)) {
+          return prev;
+        }
 
-    setMessages((prev) => {
-      if (msg.messageId && prev.some((m) => m.id === msg.messageId)) {
-        return prev;
-      }
+        const recentMine = prev.some(
+          (m) => m.from === "me" && m.text === msg.text && Date.now() - m.at < 15000
+        );
+        if (recentMine) return prev;
 
-      const recentMine = prev.some(
-        (m) => m.from === "me" && m.text === msg.text && Date.now() - m.at < 15000
-      );
-      if (recentMine) return prev;
-
-      return [
-        ...prev,
-        {
-          id: msg.messageId ?? Date.now() + Math.random(),
-          from: "them",
-          text: msg.text,
-          time: nowTime(),
-          at: Date.now(),
-        },
-      ];
-    });
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-  }, []);
+        const next = [
+          ...prev,
+          {
+            id: msg.messageId ?? Date.now() + Math.random(),
+            from: "them" as const,
+            text: msg.text,
+            time: nowTime(),
+            at: Date.now(),
+            isRead: false,
+          },
+        ];
+        syncInboxFromMessages(roomId, next, peerMeta());
+        markRoomRead(roomId);
+        return next;
+      });
+      scrollBottom();
+    },
+    [roomId, peerMeta, scrollBottom]
+  );
 
   const { connected } = useChatSocket(roomId, onIncoming);
+  const { incoming, decline } = useIncomingCall(roomId);
+
+  function handleAcceptCall() {
+    markCallAccepted(roomId);
+    router.push(`${buildVideoCallHref(roomId)}?accept=1`);
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -196,15 +271,19 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       text,
       time: nowTime(),
       at: Date.now(),
+      isRead: true,
     };
-    setMessages((prev) => [...prev, optimistic]);
+    setMessages((prev) => {
+      const next = [...prev, optimistic];
+      syncInboxFromMessages(roomId, next, peerMeta());
+      return next;
+    });
     setInput("");
     lastSentRef.current = text;
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    scrollBottom();
 
     setSending(true);
     try {
-      // Persist via REST; server broadcasts to the room over WebSocket.
       const res = await sendMessage(text, roomId, userId);
       if (!res.ok || res.data?.error) {
         setError(extractError(res.data, "Message failed to save."));
@@ -223,12 +302,28 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     }
   }
 
+  const showDateSeparator = (index: number) => {
+    if (index === 0) return true;
+    const prev = new Date(messages[index - 1].at).toDateString();
+    const curr = new Date(messages[index].at).toDateString();
+    return prev !== curr;
+  };
+
   return (
-    <div className="mobile-shell flex flex-col h-screen">
-      <div className="app-header flex items-center gap-3 px-4">
+    <div className="mobile-shell flex flex-col min-h-dvh bg-[#FAFAFA]">
+      {incoming && (
+        <IncomingCallOverlay
+          name={name}
+          photo={photo}
+          onAccept={handleAcceptCall}
+          onDecline={decline}
+        />
+      )}
+
+      <header className="app-header flex items-center gap-2.5">
         <Link
           href="/messages"
-          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors"
+          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors flex-shrink-0"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path
@@ -240,19 +335,26 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             />
           </svg>
         </Link>
+
         <Avatar photo={photo} name={name} size="sm" priority />
+
         <div className="flex-1 min-w-0">
           <p className="text-base font-bold text-dark leading-tight truncate">
             {peerLoading ? "Loading…" : name}
           </p>
-          <p className="text-xs font-medium text-muted">
-            {connected ? "Live chat" : "Matched · connecting…"}
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${connected ? "bg-green-500" : "bg-amber-400"}`}
+            />
+            <p className="text-xs font-medium text-muted truncate">
+              {connected ? "Live" : "Connecting…"}
+            </p>
+          </div>
         </div>
 
         <Link
           href={buildVideoCallHref(roomId)}
-          className="w-9 h-9 rounded-full flex items-center justify-center bg-primary-light hover:bg-primary/20 transition-colors"
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-primary-light hover:bg-primary/20 transition-colors flex-shrink-0"
           title="Video call"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -261,10 +363,12 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
           </svg>
         </Link>
 
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <button
+            type="button"
             onClick={() => setMenuOpen((o) => !o)}
             className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors"
+            aria-label="More options"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="5" r="1.5" fill="#12151C" />
@@ -277,21 +381,12 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
               <div className="absolute right-0 top-11 z-20 bg-white rounded-2xl shadow-card border border-border overflow-hidden min-w-[180px]">
-                <Link
-                  href={buildVideoCallHref(roomId)}
-                  onClick={() => setMenuOpen(false)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-dark hover:bg-border/40 transition-colors"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <polygon points="23 7 16 12 23 17 23 7" stroke="currentColor" strokeWidth="2" />
-                    <rect x="1" y="5" width="15" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
-                  </svg>
-                  Video call
-                </Link>
                 <button
+                  type="button"
                   onClick={() => {
                     setMessages([]);
                     saveChatMessages(storageKey, []);
+                    syncInboxFromMessages(roomId, [], peerMeta());
                     setMenuOpen(false);
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors text-left"
@@ -311,72 +406,75 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             </>
           )}
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pt-20 pb-4 space-y-3">
-        {messages.length === 0 && (
-          <div className="text-center text-sm text-muted mt-10">
-            Say hi to {name}! 👋
+      <div
+        className="flex-1 overflow-y-auto px-4 pt-header space-y-3"
+        style={{ paddingBottom: COMPOSER_OFFSET }}
+      >
+        {historyLoading && messages.length === 0 && (
+          <div className="space-y-3 mt-4">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}
+              >
+                <div className="h-12 rounded-2xl bg-border animate-pulse w-2/3 max-w-[240px]" />
+              </div>
+            ))}
           </div>
         )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.from === "me" ? "justify-end" : "justify-start"}`}
-          >
+
+        {!historyLoading && messages.length === 0 && (
+          <div className="text-center text-sm text-muted mt-16 px-6">
+            <p className="font-semibold text-dark mb-1">Say hi to {name}!</p>
+            <p>Start the conversation with a friendly message.</p>
+          </div>
+        )}
+
+        {messages.map((msg, index) => (
+          <div key={msg.id}>
+            {showDateSeparator(index) && (
+              <div className="flex justify-center my-4">
+                <span className="text-xs font-medium text-muted bg-white/80 px-3 py-1 rounded-full shadow-sm">
+                  {formatDateSeparator(msg.at)}
+                </span>
+              </div>
+            )}
             <div
-              className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-5 ${
-                msg.from === "me"
-                  ? "bg-primary text-white rounded-br-md"
-                  : "bg-border text-dark rounded-bl-md"
-              }`}
+              className={`flex items-end gap-2 ${msg.from === "me" ? "justify-end" : "justify-start"}`}
             >
-              <p>{msg.text}</p>
-              <p
-                className={`text-xs mt-1 ${msg.from === "me" ? "text-white/70" : "text-muted"}`}
+              {msg.from === "them" && (
+                <Avatar photo={photo} name={name} size="sm" className="!w-8 !h-8 text-[10px] mb-1" />
+              )}
+              <div
+                className={`max-w-[78%] px-4 py-3 rounded-2xl text-[15px] leading-6 scroll-mb-24 ${
+                  msg.from === "me"
+                    ? "bg-primary text-white rounded-br-md shadow-sm"
+                    : "bg-white text-dark rounded-bl-md shadow-card border border-border/50"
+                }`}
               >
-                {msg.time}
-              </p>
+                <p className="break-words">{msg.text}</p>
+                <p
+                  className={`text-[11px] mt-1 ${msg.from === "me" ? "text-white/70" : "text-muted"}`}
+                >
+                  {msg.time}
+                </p>
+              </div>
             </div>
           </div>
         ))}
-        <div ref={bottomRef} />
+        <div ref={bottomRef} className="h-1 scroll-mb-24" />
       </div>
 
-      {error && <p className="px-4 pb-1 text-xs text-red-500">{error}</p>}
-
-      <div className="px-4 py-3 bg-white border-t border-border flex items-center gap-2 pb-safe">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Type a message..."
-          className="flex-1 h-11 px-4 rounded-2xl bg-border text-sm text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
-        />
-        <button
-          onClick={handleSend}
-          disabled={sending}
-          className="w-10 h-10 rounded-full bg-primary flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M22 2L11 13"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M22 2L15 22L11 13L2 9L22 2Z"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </div>
+      <ChatComposer
+        value={input}
+        onChange={setInput}
+        onSend={() => void handleSend()}
+        sending={sending}
+        error={error}
+        onFocus={() => scrollBottom()}
+      />
     </div>
   );
 }

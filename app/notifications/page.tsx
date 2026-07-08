@@ -1,5 +1,7 @@
 "use client";
 
+import UnreadBadge from "@/components/UnreadBadge";
+
 import { useEffect, useState } from "react";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
@@ -113,18 +115,14 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="mobile-shell flex flex-col min-h-screen bg-white">
+    <div className="mobile-shell flex flex-col min-h-dvh bg-white">
       <LogoHeader
         right={
-          unreadCount > 0 ? (
-            <span className="text-xs font-bold text-primary bg-primary-light px-2.5 py-1 rounded-full">
-              {unreadCount} new
-            </span>
-          ) : null
+          unreadCount > 0 ? <UnreadBadge count={unreadCount} /> : null
         }
       />
 
-      <div className="flex-1 overflow-y-auto pt-20 pb-28">
+      <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
         {loading && (
           <p className="px-5 pt-6 text-sm text-muted">Loading notifications…</p>
         )}
