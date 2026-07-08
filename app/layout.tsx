@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import RouteLoader from "@/components/RouteLoader";
+import GlobalIncomingCall from "@/components/GlobalIncomingCall";
 
 export const metadata: Metadata = {
   title: "LetsMeet ♥ Match, Chat, Love!",
@@ -28,7 +29,11 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-urbanist antialiased bg-white"><RouteLoader />{children}</body>
+      <body className="font-urbanist antialiased bg-white">
+        <RouteLoader />
+        <GlobalIncomingCall />
+        {children}
+      </body>
     </html>
   );
 }

@@ -675,6 +675,17 @@ export function chatRoomKey(card: ProfileCard): string {
   return String(card.id);
 }
 
+/** All WebSocket room ids for a match (numeric + chatroom UUID). */
+export function callRoomIdsForMatch(card: ProfileCard): string[] {
+  const ids = new Set<string>();
+  const numeric = resolveNumericRoomId(card);
+  if (numeric != null) ids.add(String(numeric));
+  const chatroom = card.chatroom_id?.trim();
+  if (chatroom) ids.add(chatroom);
+  if (ids.size === 0) ids.add(String(card.id));
+  return Array.from(ids);
+}
+
 // ─── Chat history (API + local fallback) ─────────────────────────────────────
 
 export interface StoredChatMessage {

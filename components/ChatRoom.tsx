@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   sendMessage,
   extractError,
@@ -24,15 +23,12 @@ import {
   type StoredChatMessage,
 } from "@/lib/letsmeet";
 import { useChatSocket, type WsIncomingMessage } from "@/lib/useChatSocket";
-import { useIncomingCall } from "@/lib/useIncomingCall";
-import { markCallAccepted } from "@/lib/incomingCall";
 import {
   formatDateSeparator,
   markRoomRead,
   syncInboxFromMessages,
   upsertInboxPeer,
 } from "@/lib/chatInbox";
-import IncomingCallOverlay from "@/components/IncomingCallOverlay";
 import ChatComposer from "@/components/ChatComposer";
 import Avatar from "@/components/Avatar";
 
@@ -55,7 +51,6 @@ interface ChatRoomProps {
 }
 
 export default function ChatRoom({ roomId }: ChatRoomProps) {
-  const router = useRouter();
   const [name, setName] = useState("Chat");
   const [userId, setUserId] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
@@ -253,12 +248,6 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   );
 
   const { connected } = useChatSocket(roomId, onIncoming);
-  const { incoming, decline } = useIncomingCall(roomId);
-
-  function handleAcceptCall() {
-    markCallAccepted(roomId);
-    router.push(`${buildVideoCallHref(roomId)}?accept=1`);
-  }
 
   async function handleSend() {
     const text = input.trim();
@@ -311,15 +300,6 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
   return (
     <div className="mobile-shell flex flex-col min-h-dvh bg-[#FAFAFA]">
-      {incoming && (
-        <IncomingCallOverlay
-          name={name}
-          photo={photo}
-          onAccept={handleAcceptCall}
-          onDecline={decline}
-        />
-      )}
-
       <header className="app-header flex items-center gap-2.5">
         <Link
           href="/messages"
