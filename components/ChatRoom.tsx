@@ -10,6 +10,7 @@ import {
   getMessageList,
   parseApiChatMessages,
   getUserId,
+  isOwnSenderId,
   normalizeMediaInput,
   prefetchMedia,
   loadChatMessages,
@@ -151,11 +152,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   }, [storageKey, messages]);
 
   const onIncoming = useCallback((msg: WsIncomingMessage) => {
-    const myUserId = getUserId();
-    const isMe = msg.senderId != null && myUserId != null && String(msg.senderId) === String(myUserId);
-
-    if (isMe) {
-      // Ignore our own WebSocket echoes as they are already optimistically rendered
+    if (isOwnSenderId(msg.senderId)) {
       return;
     }
 
@@ -167,10 +164,16 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       if (msg.messageId && prev.some((m) => m.id === msg.messageId)) {
         return prev;
       }
+
+      const recentMine = prev.some(
+        (m) => m.from === "me" && m.text === msg.text && Date.now() - m.at < 15000
+      );
+      if (recentMine) return prev;
+
       return [
         ...prev,
         {
-          id: msg.messageId ?? (Date.now() + Math.random()),
+          id: msg.messageId ?? Date.now() + Math.random(),
           from: "them",
           text: msg.text,
           time: nowTime(),
@@ -181,7 +184,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
 
-  const { connected, send: sendWs } = useChatSocket(roomId, onIncoming);
+  const { connected } = useChatSocket(roomId, onIncoming);
 
   async function handleSend() {
     const text = input.trim();
@@ -202,10 +205,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
     setSending(true);
     try {
-      if (connected) {
-        sendWs(text);
-      }
-
+      // Persist via REST; server broadcasts to the room over WebSocket.
       const res = await sendMessage(text, roomId, userId);
       if (!res.ok || res.data?.error) {
         setError(extractError(res.data, "Message failed to save."));

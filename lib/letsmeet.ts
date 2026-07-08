@@ -43,7 +43,47 @@ export interface SessionUser {
   userId: number;
   fullName?: string;
   phone?: string;
+  dateOfBirth?: string;
+  hashedUserId?: string;
   profileCompleted: boolean;
+}
+
+const HASHED_USER_ID_KEY = "lm_hashed_user_id";
+
+/** UUID-style id used by GET /single/user/profile (not the numeric swipe id). */
+export function extractHashedUserId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  for (const key of ["hashed_user_id", "profile_user_id", "uuid", "user_hash"]) {
+    const v = obj[key];
+    if (typeof v === "string" && v.length >= 8 && !/^\d{1,6}$/.test(v)) return v;
+  }
+  const uid = obj.user_id;
+  if (typeof uid === "string" && uid.length >= 8 && !/^\d+$/.test(uid)) return uid;
+  return null;
+}
+
+export function storeHashedUserId(id: string): void {
+  if (!id.trim()) return;
+  updateUser({ hashedUserId: id });
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(HASHED_USER_ID_KEY, id);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function getStoredHashedUserId(): string | null {
+  const user = getUser();
+  if (user?.hashedUserId) return user.hashedUserId;
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(HASHED_USER_ID_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function getToken(): string | null {
@@ -63,9 +103,7 @@ export function getUser(): SessionUser | null {
 }
 
 /** Decodes the JWT token to extract the numeric user ID. */
-export function getNumericUserId(): number | null {
-  const token = getToken();
-  if (!token) return null;
+export function decodeUserIdFromToken(token: string): number | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -81,9 +119,38 @@ export function getNumericUserId(): number | null {
   }
 }
 
+/** Decodes the JWT token to extract the numeric user ID. */
+export function getNumericUserId(): number | null {
+  const token = getToken();
+  if (!token) return null;
+  return decodeUserIdFromToken(token);
+}
+
 export function getUserId(): string | null {
   const user = getUser();
   return user?.userId ? String(user.userId) : null;
+}
+
+/** True when `sender_id` from chat API / WebSocket belongs to the signed-in user. */
+export function isOwnSenderId(senderId: number | string | null | undefined): boolean {
+  if (senderId == null) return false;
+  const s = String(senderId).trim();
+  if (!s) return false;
+
+  const candidates = new Set<string>();
+  const user = getUser();
+  if (user?.userId != null) candidates.add(String(user.userId));
+  const numeric = getNumericUserId();
+  if (numeric != null) candidates.add(String(numeric));
+  if (user?.phone) {
+    const digits = user.phone.replace(/\D/g, "");
+    if (digits) {
+      candidates.add(digits);
+      if (digits.startsWith("234")) candidates.add(digits.slice(3));
+      if (digits.startsWith("0")) candidates.add(digits.slice(1));
+    }
+  }
+  return candidates.has(s);
 }
 
 export function setSession(token: string, user: SessionUser): void {
@@ -102,6 +169,11 @@ export function clearSession(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  try {
+    window.localStorage.removeItem(HASHED_USER_ID_KEY);
+  } catch {
+    // ignore
+  }
   resetDiscoverLocalState();
 }
 
@@ -753,6 +825,75 @@ export interface LoginResponse {
   message: string;
   date: string;
   profile_completed: boolean;
+  full_name?: string;
+  date_of_birth?: string;
+}
+
+/** Backend returns 400 with a token when credentials are valid but profile is incomplete. */
+export function isProfileIncompleteLogin(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const msg = String((data as Record<string, unknown>).message ?? "").toLowerCase();
+  return msg.includes("profile") && msg.includes("complete");
+}
+
+export function parseIncompleteLoginToken(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const token = (data as Record<string, unknown>).token;
+  return typeof token === "string" && token.length > 10 ? token : null;
+}
+
+export type InterpretedLogin =
+  | { ok: true; data: LoginResponse; needsProfile: boolean }
+  | { ok: false; message: string };
+
+/** Normalize 200 logins and 400 incomplete-profile logins (token in body). */
+export function interpretLoginResponse(res: ApiResult<LoginResponse>): InterpretedLogin {
+  if (res.ok && res.data?.token) {
+    return {
+      ok: true,
+      data: res.data,
+      needsProfile: res.data.profile_completed === false,
+    };
+  }
+
+  const token = parseIncompleteLoginToken(res.data);
+  if (token && isProfileIncompleteLogin(res.data)) {
+    const userId = decodeUserIdFromToken(token) ?? 0;
+    return {
+      ok: true,
+      data: {
+        token,
+        user_id: userId,
+        message: extractError(res.data, "Please complete your profile."),
+        date: "",
+        profile_completed: false,
+      },
+      needsProfile: true,
+    };
+  }
+
+  return {
+    ok: false,
+    message: extractError(res.data, "Invalid phone number or PIN."),
+  };
+}
+
+/** Persist session after login — captures optional profile fields from the response. */
+export function persistLoginSession(
+  loginData: LoginResponse,
+  phone: string,
+  extras?: Partial<SessionUser>
+): void {
+  const hash = extractHashedUserId(loginData);
+  setSession(loginData.token, {
+    userId: loginData.user_id,
+    fullName: loginData.full_name ?? extras?.fullName,
+    phone,
+    dateOfBirth: loginData.date_of_birth ?? extras?.dateOfBirth,
+    profileCompleted: loginData.profile_completed,
+    hashedUserId: hash ?? extras?.hashedUserId,
+  });
+  if (hash) storeHashedUserId(hash);
 }
 
 export interface ProfileCard {
@@ -1132,7 +1273,7 @@ export function parseApiChatMessages(
           ? "me"
           : m.is_mine === false || m.is_sender === false
             ? "them"
-            : myUserId != null && senderId != null && String(senderId) === String(myUserId)
+            : isOwnSenderId(senderId)
               ? "me"
               : "them";
 
@@ -1176,6 +1317,110 @@ export function getSingleProfile(userId: string) {
     `/single/user/profile?user_id=${encodeURIComponent(userId)}`,
     { auth: true }
   );
+}
+
+export function normalizeSingleProfile(raw: Record<string, unknown>): SingleProfile {
+  const dobRaw = raw.date_of_birth;
+  let dateOfBirth = 0;
+  if (typeof dobRaw === "number") dateOfBirth = dobRaw;
+  else if (typeof dobRaw === "string" && /^\d{1,3}$/.test(dobRaw.trim())) {
+    dateOfBirth = Number(dobRaw);
+  }
+
+  return {
+    name: String(raw.name ?? raw.full_name ?? ""),
+    date_of_birth: dateOfBirth,
+    about_me: String(raw.about_me ?? ""),
+    profile_image:
+      typeof raw.profile_image === "string"
+        ? raw.profile_image
+        : typeof raw.profile_photo === "string"
+          ? raw.profile_photo
+          : null,
+    location: String(raw.location ?? ""),
+    religion: raw.religion != null ? String(raw.religion) : null,
+    gender: String(raw.gender ?? ""),
+    sexual_orientation: String(raw.sexual_orientation ?? ""),
+    interests: String(raw.interests ?? ""),
+  };
+}
+
+async function tryLoadSingleProfile(userId: string): Promise<SingleProfile | null> {
+  const res = await getSingleProfile(userId);
+  if (!res.ok || !res.data) return null;
+  const wrapped = res.data as Record<string, unknown>;
+  const raw =
+    wrapped.profile && typeof wrapped.profile === "object"
+      ? (wrapped.profile as Record<string, unknown>)
+      : wrapped;
+  if (!raw.name && !raw.gender && !raw.about_me && !raw.profile_image) return null;
+  storeHashedUserId(userId);
+  return normalizeSingleProfile(raw);
+}
+
+/** Fetch the signed-in user's profile via GET /single/user/profile. */
+export async function fetchMyProfile(): Promise<{
+  ok: boolean;
+  profile: SingleProfile | null;
+  error?: string;
+}> {
+  const user = getUser();
+  if (!user) return { ok: false, profile: null, error: "Not signed in." };
+
+  const candidates = new Set<string>();
+  const stored = getStoredHashedUserId();
+  if (stored) candidates.add(stored);
+
+  const token = getToken();
+  if (token) {
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const payload = JSON.parse(
+          typeof window !== "undefined"
+            ? window.atob(parts[1])
+            : Buffer.from(parts[1], "base64").toString("utf-8")
+        ) as Record<string, unknown>;
+        for (const key of ["user_hash", "hash", "uuid", "profile_id"]) {
+          const v = payload[key];
+          if (typeof v === "string" && v.length >= 8) candidates.add(v);
+        }
+      }
+    } catch {
+      // ignore bad jwt
+    }
+  }
+
+  if (user.phone) {
+    const digits = user.phone.replace(/\D/g, "");
+    const tail = digits.slice(-10);
+    if (tail.length === 10) candidates.add(tail);
+  }
+  if (user.userId) candidates.add(String(user.userId));
+
+  for (const id of Array.from(candidates)) {
+    const profile = await tryLoadSingleProfile(id);
+    if (profile) return { ok: true, profile };
+  }
+
+  return {
+    ok: false,
+    profile: null,
+    error: "Could not load your profile. Basic account info is shown below.",
+  };
+}
+
+/** Download a profile image for multipart re-upload on update. */
+export async function fetchMediaBlob(path?: string | null): Promise<Blob | null> {
+  const url = mediaUrl(path) ?? directMediaUrl(path);
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch {
+    return null;
+  }
 }
 
 export function swipe(userId: string, type: "like" | "pass") {

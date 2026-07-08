@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
-import { createUser, loginUser, extractError, setSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
+import { createUser, loginUser, extractError, interpretLoginResponse, persistLoginSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
 import { clearDraft, saveDraft } from "@/lib/profileDraft";
 
 export default function SignUpPage() {
@@ -50,18 +50,17 @@ export default function SignUpPage() {
       }
 
       const login = await loginUser(number, pin);
-      if (!login.ok || !login.data?.token) {
-        setError(extractError(login.data, "Account created, but sign-in failed. Try signing in."));
+      const result = interpretLoginResponse(login);
+      if (!result.ok) {
+        setError(result.message);
         return;
       }
 
       clearDraft();
       resetDiscoverLocalState();
-      setSession(login.data.token, {
-        userId: login.data.user_id,
+      persistLoginSession(result.data, number, {
         fullName: name.trim(),
-        phone: number,
-        profileCompleted: login.data.profile_completed,
+        dateOfBirth: dob,
       });
       saveDraft({});
       router.push("/setup");

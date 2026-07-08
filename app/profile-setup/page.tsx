@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import { InputField, SelectField } from "@/components/FormFields";
-import { uploadProfile, extractError, updateUser, getUser, storeUserReligion } from "@/lib/letsmeet";
+import { uploadProfile, extractError, updateUser, getUser, storeUserReligion, extractHashedUserId, storeHashedUserId } from "@/lib/letsmeet";
 import { getDraft, clearDraft, dataUrlToBlob } from "@/lib/profileDraft";
 
 export default function ProfileSetupPage() {
@@ -65,6 +65,8 @@ export default function ProfileSetupPage() {
       // The backend currently marks the profile complete even when it returns
       // a 500 on the image step, so we proceed unless it's a hard validation error.
       if (res.ok || res.status === 500) {
+        const hash = extractHashedUserId(res.data);
+        if (hash) storeHashedUserId(hash);
         if (draft.religion) storeUserReligion(draft.religion);
         updateUser({ profileCompleted: true });
         clearDraft();

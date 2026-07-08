@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
-import { loginUser, extractError, setSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
+import { loginUser, interpretLoginResponse, persistLoginSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -22,17 +22,14 @@ export default function SignInPage() {
     setLoading(true);
     try {
       const login = await loginUser(number, pin);
-      if (!login.ok || !login.data?.token) {
-        setError(extractError(login.data, "Invalid phone number or PIN."));
+      const result = interpretLoginResponse(login);
+      if (!result.ok) {
+        setError(result.message);
         return;
       }
       resetDiscoverLocalState();
-      setSession(login.data.token, {
-        userId: login.data.user_id,
-        phone: number,
-        profileCompleted: login.data.profile_completed,
-      });
-      router.push(login.data.profile_completed ? "/home" : "/setup");
+      persistLoginSession(result.data, number);
+      router.push(result.needsProfile ? "/setup" : "/home");
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {
