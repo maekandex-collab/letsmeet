@@ -9,7 +9,6 @@ import {
   getSingleProfile,
   getMessageList,
   parseApiChatMessages,
-  getUserId,
   isOwnSenderId,
   normalizeMediaInput,
   prefetchMedia,
@@ -100,7 +99,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       const res = await getSingleProfile(userId);
       if (cancelled) return;
       if (res.ok && res.data?.profile) {
-        setName(res.data.profile.name || name);
+        setName((prev) => res.data!.profile.name || prev);
         const img = normalizeMediaInput(res.data.profile.profile_image);
         if (img) {
           setPhoto(img);
@@ -134,7 +133,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         }
       }
 
-      const fromApi = parseApiChatMessages(res.data, getUserId());
+      const fromApi = parseApiChatMessages(res.data);
       if (fromApi.length === 0) return;
 
       setMessages(fromApi);

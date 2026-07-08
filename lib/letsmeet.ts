@@ -1246,10 +1246,7 @@ export interface ApiChatMessage {
   timestamp?: string;
 }
 
-export function parseApiChatMessages(
-  data: unknown,
-  myUserId?: string | number | null
-): StoredChatMessage[] {
+export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
   const list = Array.isArray(data)
     ? data
     : data && typeof data === "object"
