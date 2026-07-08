@@ -13,7 +13,8 @@ import {
 
 function VideoCallContent() {
   const params = useParams();
-  const roomId = parseNumericRoomId(String(params.roomId ?? ""));
+  const segment = String(params.roomId ?? "").trim();
+  const roomId = segment ? (parseNumericRoomId(segment) ?? segment) : null;
   const [name, setName] = useState("Video call");
 
   useEffect(() => {

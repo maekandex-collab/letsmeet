@@ -2,18 +2,18 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { parseNumericRoomId } from "@/lib/letsmeet";
 
 function LegacyVideoRedirect() {
   const router = useRouter();
   const params = useSearchParams();
 
   useEffect(() => {
-    const roomId =
-      parseNumericRoomId(params.get("room")) ??
-      parseNumericRoomId(params.get("chatroom"));
-    if (roomId != null) {
-      router.replace(`/video-call/${roomId}`);
+    const room =
+      params.get("room")?.trim() ||
+      params.get("chatroom")?.trim() ||
+      "";
+    if (room) {
+      router.replace(`/video-call/${room}`);
     } else {
       router.replace("/messages");
     }

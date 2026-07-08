@@ -7,7 +7,7 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export function useVideoCall(roomId: number | null) {
+export function useVideoCall(roomId: string | number | null) {
   const [status, setStatus] = useState("Connecting…");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -139,12 +139,18 @@ export function useVideoCall(roomId: number | null) {
   }, []);
 
   useEffect(() => {
-    if (roomId == null || Number.isNaN(roomId)) {
+    const id =
+      roomId == null
+        ? null
+        : typeof roomId === "number"
+          ? roomId
+          : String(roomId).trim();
+    if (id == null || id === "" || (typeof id === "number" && Number.isNaN(id))) {
       setStatus("No room ID");
       return;
     }
 
-    const ws = new WebSocket(callWsUrl(roomId));
+    const ws = new WebSocket(callWsUrl(id));
     socketRef.current = ws;
 
     ws.onopen = () => setStatus("Ready — tap Start Call");
