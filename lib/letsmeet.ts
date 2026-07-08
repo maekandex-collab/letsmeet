@@ -1290,14 +1290,17 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
         ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         : nowTimeLabel();
 
-      return {
+      const message: StoredChatMessage = {
         id: m.id ?? m.message_id ?? at + index,
         from,
         text,
         time,
         at: Number.isFinite(at) ? at : Date.now() + index,
-        isRead: m.is_read,
-      } satisfies StoredChatMessage;
+      };
+      if (typeof m.is_read === "boolean") {
+        message.isRead = m.is_read;
+      }
+      return message;
     })
     .filter((m): m is StoredChatMessage => m != null)
     .sort((a, b) => a.at - b.at);
