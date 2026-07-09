@@ -9,7 +9,19 @@ import {
 } from "@/lib/incomingCall";
 
 const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    {
+      urls: "stun:stun.l.google.com:19302",
+    },
+    {
+      urls: [
+        "turn:turner.lenhub.net:3478?transport=udp",
+        "turn:turner.lenhub.net:3478?transport=tcp",
+      ],
+      username: "webrtc",
+      credential: "YourStrongPassword123!",
+    },
+  ],
 };
 
 interface UseVideoCallOptions {
