@@ -14,10 +14,7 @@ const RTC_CONFIG: RTCConfiguration = {
       urls: "stun:stun.l.google.com:19302",
     },
     {
-      urls: [
-        "turn:turner.lenhub.net:3478?transport=udp",
-        "turn:turner.lenhub.net:3478?transport=tcp",
-      ],
+      urls: ["turn:turner.lenhub.net:3478?transport=udp"],
       username: "webrtc",
       credential: "YourStrongPassword123!",
     },
