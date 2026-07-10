@@ -9,7 +9,7 @@ const BASE_URL =
 const TRAILING_SLASH = new Set([
   "create/user",
   "login/user",
-  "user/profile",
+  "update_reg/profile",
   "single/user/profile",
   "matched/list",
   "forgot/password",

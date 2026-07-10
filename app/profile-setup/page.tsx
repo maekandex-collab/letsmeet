@@ -57,6 +57,7 @@ export default function ProfileSetupPage() {
         location: draft.location?.trim() || "Nigeria",
         show_location: true,
         religion: draft.religion,
+        occupation: draft.occupation,
         profile_image: mainBlob,
         image1,
         image2,

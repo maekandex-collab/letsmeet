@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
+import LetsMeetLogo from "@/components/LetsMeetLogo";
 import { createUser, loginUser, extractError, interpretLoginResponse, persistLoginSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
 import { clearDraft, saveDraft } from "@/lib/profileDraft";
 
@@ -83,6 +84,7 @@ export default function SignUpPage() {
     <div className="mobile-shell flex flex-col min-h-screen">
       <BackHeader />
       <div className="flex-1 flex flex-col px-5 pt-20 pb-28">
+        <LetsMeetLogo size={52} className="mb-5" />
         <h1 className="screen-title">Create Account</h1>
         <p className="screen-subtitle mb-8">Join LetsMeet and find your perfect match today</p>
 

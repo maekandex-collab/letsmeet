@@ -13,12 +13,14 @@ import {
   normalizeMediaInput,
   prefetchMedia,
   loadChatMessages,
+  mergeChatMessages,
   saveChatMessages,
   linkMatchRoomIds,
   stashChatRoomId,
   readChatPeer,
   findMatchByRoomId,
   buildVideoCallHref,
+  buildAudioCallHref,
   resolveNumericRoomId,
   type StoredChatMessage,
 } from "@/lib/letsmeet";
@@ -187,16 +189,18 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
           const dbRoomId = Number(first?.room_id ?? first?.room);
           if (Number.isFinite(dbRoomId) && dbRoomId > 0) {
             stashChatRoomId(String(roomId), dbRoomId);
+            linkMatchRoomIds(dbRoomId, [roomId]);
           }
         }
       }
 
       const fromApi = parseApiChatMessages(res.data);
-      if (fromApi.length === 0) return;
+      const merged = mergeChatMessages(local, fromApi);
+      if (merged.length === 0) return;
 
-      setMessages(fromApi);
-      saveChatMessages(storageKey, fromApi);
-      syncInboxFromMessages(roomId, fromApi, peerMeta());
+      setMessages(merged);
+      saveChatMessages(storageKey, merged);
+      syncInboxFromMessages(roomId, merged, peerMeta());
       markRoomRead(roomId);
       scrollBottom(false);
     })();
@@ -273,15 +277,11 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
     setSending(true);
     try {
-      const res = await sendMessage(text, roomId, userId);
+      const res = await sendMessage(text, roomId);
       if (!res.ok || res.data?.error) {
         setError(extractError(res.data, "Message failed to save."));
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
         return;
-      }
-
-      if (res.data?.room_id != null && res.data.room_id !== roomId) {
-        linkMatchRoomIds(res.data.room_id, [roomId, userId, readChatPeer()?.chatroomId]);
       }
     } catch {
       setError("Network error. Message not sent.");
@@ -331,6 +331,21 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             </p>
           </div>
         </div>
+
+        <Link
+          href={buildAudioCallHref(roomId)}
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-primary-light hover:bg-primary/20 transition-colors flex-shrink-0"
+          title="Audio call"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
+              stroke="#F759F5"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </Link>
 
         <Link
           href={buildVideoCallHref(roomId)}

@@ -1,0 +1,17 @@
+{
+  "name": "LetsMeet",
+  "short_name": "LetsMeet",
+  "description": "Match, chat, and connect with genuine people near you.",
+  "start_url": "/splash",
+  "display": "standalone",
+  "background_color": "#2a0b3f",
+  "theme_color": "#b5179e",
+  "icons": [
+    {
+      "src": "/letsmeet-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

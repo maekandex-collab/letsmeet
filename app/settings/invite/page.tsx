@@ -1,6 +1,7 @@
 ﻿"use client";
 import { useState } from "react";
 import { BackHeader } from "@/components/Header";
+import LetsMeetLogo from "@/components/LetsMeetLogo";
 
 const REFERRAL_LINK = "https://letsmeet.app/invite/X4K8";
 
@@ -25,13 +26,7 @@ export default function InvitePage() {
     <div className="mobile-shell flex flex-col min-h-screen">
       <BackHeader title="Invite Friends" backHref="/account" />
       <div className="flex-1 flex flex-col items-center justify-center px-5 pb-8">
-        <div className="w-24 h-24 rounded-full bg-primary-light flex items-center justify-center mb-6 shadow-card">
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="9" cy="7" r="4" stroke="#F759F5" strokeWidth="2" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </div>
+        <LetsMeetLogo size={88} className="mb-6" />
 
         <h1 className="screen-title mb-2 text-center">Invite Your Friends</h1>
         <p className="text-sm text-muted text-center leading-5 mb-8 max-w-xs">

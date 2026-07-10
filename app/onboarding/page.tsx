@@ -1,4 +1,5 @@
 import Link from "next/link";
+import LetsMeetLogo from "@/components/LetsMeetLogo";
 
 export default function OnboardingPage() {
   return (
@@ -27,13 +28,8 @@ export default function OnboardingPage() {
             <div className="absolute w-52 h-52 rounded-full bg-primary/10" />
             <div className="absolute w-40 h-40 rounded-full bg-primary/15" />
             {/* Icon card */}
-            <div className="relative w-28 h-28 rounded-3xl bg-white shadow-xl flex items-center justify-center rotate-[-6deg]">
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-                  fill="#F759F5"
-                />
-              </svg>
+            <div className="relative w-28 h-28 rounded-3xl bg-white shadow-xl flex items-center justify-center rotate-[-6deg] p-3">
+              <LetsMeetLogo size={72} priority />
             </div>
           </div>
         </div>

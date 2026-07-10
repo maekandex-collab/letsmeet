@@ -661,6 +661,10 @@ export function buildVideoCallHref(roomId: number | string): string {
   return `/video-call/${roomId}`;
 }
 
+export function buildAudioCallHref(roomId: number | string): string {
+  return `/video-call/${roomId}?audio=1`;
+}
+
 /** Clean chat URL — only numeric room id (or `/chat/pending` before room is known). */
 export function buildChatHref(card: ProfileCard): string {
   const roomId = resolveNumericRoomId(card);
@@ -705,15 +709,12 @@ function chatMsgKey(roomId: string | number): string {
 }
 
 export function loadChatMessages(roomId: string | number): StoredChatMessage[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(chatMsgKey(roomId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as StoredChatMessage[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  const keys = chatStorageKeys(roomId);
+  let merged: StoredChatMessage[] = [];
+  for (const key of keys) {
+    merged = mergeChatMessages(merged, readChatMessagesFromKey(key));
   }
+  return merged;
 }
 
 export function saveChatMessages(
@@ -721,8 +722,11 @@ export function saveChatMessages(
   messages: StoredChatMessage[]
 ): void {
   if (typeof window === "undefined") return;
+  const payload = JSON.stringify(messages.slice(-200));
   try {
-    localStorage.setItem(chatMsgKey(roomId), JSON.stringify(messages.slice(-200)));
+    for (const key of chatStorageKeys(roomId)) {
+      localStorage.setItem(chatMsgKey(key), payload);
+    }
   } catch {
     // quota exceeded — best effort
   }
@@ -744,6 +748,79 @@ export function getStashedChatRoomId(chatroomId: string): number | null {
   if (!raw) return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Numeric room id for REST message APIs (send + history). */
+export function resolveApiRoomId(roomId: string | number): number | null {
+  const raw = String(roomId).trim();
+  if (!raw) return null;
+
+  const direct = parseNumericRoomId(raw);
+  if (direct != null) return direct;
+
+  const stashed = getStashedChatRoomId(raw);
+  if (stashed != null) return stashed;
+
+  const peer = readChatPeer();
+  if (peer?.roomId != null && Number.isFinite(peer.roomId)) return peer.roomId;
+  if (peer?.chatroomId) {
+    const fromPeer = getStashedChatRoomId(peer.chatroomId);
+    if (fromPeer != null) return fromPeer;
+  }
+
+  return null;
+}
+
+/**
+ * Chatroom identifier the message API expects.
+ *
+ * The backend keys chats on the `chatroom_id` UUID string (from matched/list),
+ * NOT the numeric database id. `POST /message/send` and `GET /message/room/{id}`
+ * both reject numeric ids ("Input should be a valid string" /
+ * "Chatroom matching query does not exist"). The chat URL already carries this
+ * UUID, so in the common case we return it as-is.
+ */
+export function chatroomIdForApi(roomId: string | number): string | null {
+  const raw = String(roomId).trim();
+  if (!raw) return null;
+  if (!/^\d+$/.test(raw)) return raw; // already the chatroom UUID
+  // A numeric id was passed — recover the UUID from the current peer context.
+  const peer = readChatPeer();
+  if (peer?.chatroomId) return peer.chatroomId;
+  return raw;
+}
+
+function chatStorageKeys(roomId: string | number): string[] {
+  const keys = new Set<string>();
+  const raw = String(roomId).trim();
+  if (raw) keys.add(raw);
+  const apiRoomId = resolveApiRoomId(roomId);
+  if (apiRoomId != null) keys.add(String(apiRoomId));
+  return Array.from(keys);
+}
+
+export function mergeChatMessages(
+  ...lists: StoredChatMessage[][]
+): StoredChatMessage[] {
+  const map = new Map<number, StoredChatMessage>();
+  for (const list of lists) {
+    for (const msg of list) {
+      map.set(msg.id, msg);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.at - b.at);
+}
+
+function readChatMessagesFromKey(key: string): StoredChatMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(chatMsgKey(key));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as StoredChatMessage[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function isHtmlError(text: string): boolean {
@@ -1011,8 +1088,8 @@ export interface LikeResponse {
 
 export interface SendMessageResponse {
   message_id?: number;
-  room_id?: number;
-  sender_id?: number;
+  room_id?: string | number;
+  sender_id?: string | number;
   text?: string;
   error?: string;
 }
@@ -1028,6 +1105,7 @@ export interface ProfileUploadFields {
   image1?: Blob | null;
   image2?: Blob | null;
   religion?: string;
+  occupation?: string;
 }
 
 export interface Notification {
@@ -1100,11 +1178,12 @@ export function uploadProfile(fields: ProfileUploadFields) {
   form.append("about_me", fields.about_me);
   form.append("location", fields.location);
   form.append("show_location", String(fields.show_location));
+  form.append("religion", fields.religion?.trim() || "Not specified");
+  form.append("occupation", fields.occupation?.trim() || "Not specified");
   form.append("profile_image", fields.profile_image, "profile.jpg");
   if (fields.image1) form.append("image1", fields.image1, "image1.jpg");
   if (fields.image2) form.append("image2", fields.image2, "image2.jpg");
-  if (fields.religion) form.append("religion", fields.religion);
-  return request("/user/profile", { method: "POST", form, auth: true });
+  return request("/update_reg/profile", { method: "POST", form, auth: true });
 }
 
 export interface FeedFilters {
@@ -1322,8 +1401,9 @@ function nowTimeLabel(): string {
 }
 
 export function getMessageList(roomId: number | string, page = 1) {
+  const apiRoomId = chatroomIdForApi(roomId) ?? String(roomId).trim();
   return request<unknown>(
-    `/message/room/${encodeURIComponent(String(roomId))}?page=${page}`,
+    `/message/room/${encodeURIComponent(apiRoomId)}?page=${page}`,
     { auth: true }
   );
 }
@@ -1526,17 +1606,32 @@ export function getMatchedList() {
   return request<ProfileCard[] | ProfileCard>("/matched/list", { auth: true });
 }
 
-export function sendMessage(
+export async function sendMessage(
   message: string,
-  roomId: string | number,
-  replyTo?: string | number | null
+  roomId: string | number
 ) {
+  let apiRoomId = chatroomIdForApi(roomId);
+
+  // Only a numeric id is known — look up the chatroom UUID from matches.
+  if (apiRoomId == null || /^\d+$/.test(apiRoomId)) {
+    const match = await findMatchByRoomId(roomId);
+    if (match?.chatroom_id) apiRoomId = String(match.chatroom_id);
+  }
+
+  if (apiRoomId == null) {
+    return {
+      ok: false,
+      status: 400,
+      data: { error: "Chat room not ready. Go back and reopen the conversation." },
+    } as ApiResult<SendMessageResponse>;
+  }
+
   return request<SendMessageResponse>("/message/send", {
     method: "POST",
     body: {
       message,
-      room_id: String(roomId),
-      reply_to: replyTo != null ? String(replyTo) : null,
+      room_id: apiRoomId,
+      reply_to: null,
     },
     auth: true,
   });

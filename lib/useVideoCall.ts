@@ -8,34 +8,87 @@ import {
   takePendingCallOffer,
 } from "@/lib/incomingCall";
 
-const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [
-    {
-      urls: "stun:stun.l.google.com:19302",
-    },
-    {
-      urls: ["turn:turner.lenhub.net:3478?transport=udp"],
-      username: "webrtc",
-      credential: "YourStrongPassword123!",
-    },
-  ],
+/** Low-bandwidth capture — QCIF-class resolution for mobile calls. */
+const VIDEO_CAPTURE: MediaTrackConstraints = {
+  width: { ideal: 176, max: 176 },
+  height: { ideal: 144, max: 144 },
+  frameRate: { ideal: 10, max: 10 },
 };
+
+const VIDEO_MAX_BITRATE = 150_000; // 150 kbps
+const VIDEO_MAX_FRAMERATE = 15;
+
+/** STUN only for now — TURN credentials will come from a backend endpoint later. */
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+];
+
+async function buildRtcConfig(): Promise<RTCConfiguration> {
+  // TODO: fetch TURN urls/username/credential from backend when endpoint is ready.
+  return {
+    iceServers: DEFAULT_ICE_SERVERS,
+    iceTransportPolicy: "all",
+  };
+}
+
+/** Add `usedtx=1` to the Opus fmtp line so silent periods use less bandwidth. */
+function enableOpusDtx(sdp: string): string {
+  const opusPt = sdp.match(/^a=rtpmap:(\d+) opus\/48000/m)?.[1];
+  if (!opusPt) return sdp;
+
+  const fmtpRe = new RegExp(`^a=fmtp:${opusPt} (.+)$`, "m");
+  const match = sdp.match(fmtpRe);
+  if (!match) return sdp;
+  if (match[1].includes("usedtx=1")) return sdp;
+
+  return sdp.replace(fmtpRe, `a=fmtp:${opusPt} ${match[1]};usedtx=1`);
+}
+
+function mungeSessionDescription(
+  desc: RTCSessionDescriptionInit
+): RTCSessionDescriptionInit {
+  if (!desc.sdp) return desc;
+  return { ...desc, sdp: enableOpusDtx(desc.sdp) };
+}
+
+async function applyVideoSenderLimits(pc: RTCPeerConnection): Promise<void> {
+  const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+  if (!sender) return;
+
+  const params = sender.getParameters();
+  if (!params.encodings?.length) params.encodings = [{}];
+
+  params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
+  params.encodings[0].maxFramerate = VIDEO_MAX_FRAMERATE;
+
+  try {
+    await sender.setParameters(params);
+  } catch {
+    // May fail before negotiation completes — retried on "connected".
+  }
+}
+
+/** Calls are limited to 10 minutes, then auto-end. */
+export const CALL_LIMIT_SECONDS = 10 * 60;
 
 interface UseVideoCallOptions {
   /** User tapped Accept on the incoming-call screen */
   acceptIncoming?: boolean;
+  /** Audio-only call — no camera */
+  audioOnly?: boolean;
 }
 
 export function useVideoCall(
   roomId: string | number | null,
   options: UseVideoCallOptions = {}
 ) {
-  const { acceptIncoming = false } = options;
+  const { acceptIncoming = false, audioOnly = false } = options;
   const [status, setStatus] = useState("Connecting…");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState(false);
+  const [callSeconds, setCallSeconds] = useState(0);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -73,20 +126,22 @@ export function useVideoCall(
 
   const initMedia = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    const stream = await navigator.mediaDevices.getUserMedia(
+      audioOnly
+        ? { video: false, audio: true }
+        : { video: VIDEO_CAPTURE, audio: true }
+    );
     localStreamRef.current = stream;
-    attachLocal(stream);
+    if (!audioOnly) attachLocal(stream);
     return stream;
-  }, [attachLocal]);
+  }, [attachLocal, audioOnly]);
 
   const createPeer = useCallback(async () => {
     if (peerRef.current) return peerRef.current;
 
     const stream = await initMedia();
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    const rtcConfig = await buildRtcConfig();
+    const pc = new RTCPeerConnection(rtcConfig);
     peerRef.current = pc;
 
     const remote = new MediaStream();
@@ -114,6 +169,7 @@ export function useVideoCall(
         setInCall(true);
         setIncomingCall(false);
         stopRetry();
+        void applyVideoSenderLimits(pc);
       } else if (pc.connectionState === "failed") {
         setStatus("Connection failed");
       } else if (pc.connectionState !== "closed") {
@@ -132,8 +188,9 @@ export function useVideoCall(
       try {
         const pc = await createPeer();
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
+        const answer = mungeSessionDescription(await pc.createAnswer());
         await pc.setLocalDescription(answer);
+        await applyVideoSenderLimits(pc);
         ws.send(JSON.stringify({ type: "answer", answer }));
         setStatus("Connecting…");
         setIncomingCall(false);
@@ -183,8 +240,9 @@ export function useVideoCall(
     }
 
     const pc = await createPeer();
-    const offer = await pc.createOffer();
+    const offer = mungeSessionDescription(await pc.createOffer());
     await pc.setLocalDescription(offer);
+    await applyVideoSenderLimits(pc);
     ws.send(JSON.stringify({ type: "offer", offer }));
     return true;
   }, [createPeer]);
@@ -248,6 +306,7 @@ export function useVideoCall(
   }, []);
 
   const toggleCamera = useCallback(() => {
+    if (audioOnly) return;
     const stream = localStreamRef.current;
     if (!stream) return;
     setIsCameraOff((prev) => {
@@ -257,7 +316,7 @@ export function useVideoCall(
       });
       return next;
     });
-  }, []);
+  }, [audioOnly]);
 
   const shouldAutoAnswer = useCallback(
     (id: string | number) => acceptIncoming || isCallAccepted(id),
@@ -350,12 +409,33 @@ export function useVideoCall(
     };
   }, [roomId, answerOffer, endCall, shouldAutoAnswer, stopRetry]);
 
+  // Call duration timer + auto-end at the time limit.
+  useEffect(() => {
+    if (!inCall) {
+      setCallSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setCallSeconds((s) => {
+        const next = s + 1;
+        if (next >= CALL_LIMIT_SECONDS) {
+          endCall();
+          return CALL_LIMIT_SECONDS;
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [inCall, endCall]);
+
   return {
     status,
     inCall,
     incomingCall,
     isMuted,
     isCameraOff,
+    callSeconds,
+    callLimitSeconds: CALL_LIMIT_SECONDS,
     localVideoRef,
     remoteVideoRef,
     startCall,
@@ -364,5 +444,6 @@ export function useVideoCall(
     endCall,
     toggleMute,
     toggleCamera,
+    audioOnly,
   };
 }

@@ -11,6 +11,7 @@ export interface ProfileDraft {
   photos?: string[]; // data URLs (base64)
   gender?: string;
   religion?: string;
+  occupation?: string;
   location?: string;
   /** Always true during onboarding — location sharing stays on. */
   show_location?: boolean;

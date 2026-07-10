@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
+import LetsMeetLogo from "@/components/LetsMeetLogo";
 import { loginUser, interpretLoginResponse, persistLoginSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
 
 export default function SignInPage() {
@@ -43,6 +44,7 @@ export default function SignInPage() {
     <div className="mobile-shell flex flex-col min-h-screen">
       <BackHeader />
       <div className="flex-1 flex flex-col px-5 pt-20 pb-28">
+        <LetsMeetLogo size={52} className="mb-5" />
         <h1 className="screen-title">Welcome Back!</h1>
         <p className="screen-subtitle mb-8">Your LetsMeet dating adventure awaits</p>
 

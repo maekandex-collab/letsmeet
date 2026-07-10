@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import LetsMeetLogo from "@/components/LetsMeetLogo";
 
 interface BackHeaderProps {
   title?: string;
@@ -43,9 +44,8 @@ interface LogoHeaderProps {
 export function LogoHeader({ right }: LogoHeaderProps) {
   return (
     <header className="app-header">
-      <Link href="/home" className="flex items-center gap-2">
-        <span className="text-xl font-bold text-primary">♥</span>
-        <span className="text-xl font-bold text-dark">LetsMeet</span>
+      <Link href="/home" className="flex items-center">
+        <LetsMeetLogo size={32} showWordmark priority />
       </Link>
       {right && <div className="flex items-center gap-3">{right}</div>}
     </header>

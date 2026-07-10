@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
-import { saveDraft } from "@/lib/profileDraft";
+import { InputField } from "@/components/FormFields";
+import { getDraft, saveDraft } from "@/lib/profileDraft";
 import { storeDiscoverPreferences, loadDiscoverPreferences } from "@/lib/letsmeet";
 
 const RELIGIONS = [
@@ -29,20 +30,34 @@ function FaithIcon() {
 export default function ReligionPage() {
   const router = useRouter();
   const [religion, setReligion] = useState("");
+  const [occupation, setOccupation] = useState("");
 
-  const canContinue = religion !== "";
+  useEffect(() => {
+    const draft = getDraft();
+    if (draft.religion) setReligion(draft.religion);
+    if (draft.occupation) setOccupation(draft.occupation);
+  }, []);
 
-  function handleContinue() {
-    saveDraft({ religion, show_location: true });
+  const canContinue = religion !== "" && occupation.trim() !== "";
+
+  function clearDiscoverReligionFilter() {
     const prefs = loadDiscoverPreferences();
     storeDiscoverPreferences({ ...prefs, religion: "" });
+  }
+
+  function handleContinue() {
+    saveDraft({
+      religion,
+      occupation: occupation.trim(),
+      show_location: true,
+    });
+    clearDiscoverReligionFilter();
     router.push("/profile-setup");
   }
 
   function handleSkip() {
     saveDraft({ show_location: true });
-    const prefs = loadDiscoverPreferences();
-    storeDiscoverPreferences({ ...prefs, religion: "" });
+    clearDiscoverReligionFilter();
     router.push("/profile-setup");
   }
 
@@ -59,10 +74,10 @@ export default function ReligionPage() {
               <FaithIcon />
             </div>
           </div>
-          <h1 className="screen-title mb-1 text-center">What&apos;s your religion?</h1>
+          <h1 className="screen-title mb-1 text-center">A little more about you</h1>
           <p className="text-sm text-muted text-center max-w-xs leading-5">
-            This helps us suggest more compatible matches. Your location stays on for nearby
-            discovery.
+            Religion and occupation help us suggest more compatible matches. Your location stays on
+            for nearby discovery.
           </p>
         </div>
 
@@ -100,14 +115,36 @@ export default function ReligionPage() {
           </div>
         </div>
 
+        <InputField
+          label="Occupation"
+          id="occupation"
+          name="occupation"
+          placeholder="e.g. Software Engineer, Student, Nurse"
+          autoComplete="organization-title"
+          value={occupation}
+          onChange={(e) => setOccupation(e.target.value)}
+          className="mt-4"
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <rect x="2" y="7" width="20" height="14" rx="2" stroke="#616568" strokeWidth="2" />
+              <path
+                d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"
+                stroke="#616568"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          }
+        />
+
         {canContinue && (
           <div className="mt-5 flex items-center gap-3 bg-primary-light rounded-2xl px-4 py-3">
             <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
               <FaithIcon />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-dark">{religion}</p>
-              <p className="text-xs text-muted">Used for match preferences</p>
+              <p className="text-xs text-muted truncate">{occupation.trim()}</p>
             </div>
           </div>
         )}

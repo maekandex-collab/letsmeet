@@ -1,4 +1,5 @@
 import Link from "next/link";
+import LetsMeetLogo from "@/components/LetsMeetLogo";
 
 // Floating hearts rendered behind the content. Values are deterministic
 // (no Math.random) so server and client markup match.
@@ -75,10 +76,8 @@ export default function SplashPage() {
       <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-6 text-center">
         {/* Logo */}
         <div className="animate-splash-logo-in">
-          <div
-            className="w-24 h-24 rounded-[28px] bg-gradient-to-br from-[#F759F5] to-[#b5179e] flex items-center justify-center animate-splash-glow"
-          >
-            <HeartGlyph className="w-12 h-12 text-white animate-splash-heartbeat" />
+          <div className="w-28 h-28 rounded-[28px] bg-white/95 shadow-2xl flex items-center justify-center p-3 animate-splash-glow">
+            <LetsMeetLogo size={88} priority />
           </div>
         </div>
 
