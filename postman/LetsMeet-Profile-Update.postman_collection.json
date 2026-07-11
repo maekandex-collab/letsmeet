@@ -1,0 +1,161 @@
+{
+  "info": {
+    "name": "LetsMeet - Profile Update (500 debug)",
+    "description": "Reproduce profile update on mtn.lenhub.net sandbox.\n\nImportant:\n- Use trailing slash on update_reg/profile/\n- Without slash you may get HTTP 500 (Django HTML error)\n- Completed profiles return 400 \"Profile already completed\"\n- Login returns profile_image, profile_image_one, profile_image_two",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://mtn.lenhub.net/api/letsmeet"
+    },
+    {
+      "key": "phone",
+      "value": "2348068608302"
+    },
+    {
+      "key": "pin",
+      "value": "123456"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Login (get JWT)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.token) {",
+              "  pm.collectionVariables.set('token', json.token);",
+              "  console.log('Token saved. profile_completed=', json.profile_completed);",
+              "  console.log('profile_image=', json.profile_image);",
+              "  console.log('profile_image_one=', json.profile_image_one);",
+              "  console.log('profile_image_two=', json.profile_image_two);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"number\": \"{{phone}}\",\n  \"pin\": \"{{pin}}\"\n}"
+        },
+        "url": "{{baseUrl}}/login/user/"
+      }
+    },
+    {
+      "name": "2. Update profile (CORRECT - with trailing slash)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "sexual_orientation", "value": "Straight", "type": "text" },
+            { "key": "gender", "value": "male", "type": "text" },
+            { "key": "interests", "value": "Music, Travel", "type": "text" },
+            { "key": "about_me", "value": "Postman test profile update", "type": "text" },
+            { "key": "location", "value": "Nigeria", "type": "text" },
+            { "key": "show_location", "value": "true", "type": "text" },
+            { "key": "religion", "value": "Christian", "type": "text" },
+            { "key": "occupation", "value": "Engineer", "type": "text" },
+            {
+              "key": "profile_image",
+              "type": "file",
+              "src": [],
+              "description": "Required. Pick any JPG/PNG."
+            },
+            {
+              "key": "image1",
+              "type": "file",
+              "src": [],
+              "description": "Optional extra photo"
+            },
+            {
+              "key": "image2",
+              "type": "file",
+              "src": [],
+              "description": "Optional extra photo"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/update_reg/profile/"
+      }
+    },
+    {
+      "name": "3. Update profile (WRONG - no trailing slash → often 500)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "sexual_orientation", "value": "Straight", "type": "text" },
+            { "key": "gender", "value": "male", "type": "text" },
+            { "key": "interests", "value": "Music, Travel", "type": "text" },
+            { "key": "about_me", "value": "Postman test - no slash", "type": "text" },
+            { "key": "location", "value": "Nigeria", "type": "text" },
+            { "key": "show_location", "value": "true", "type": "text" },
+            { "key": "religion", "value": "Christian", "type": "text" },
+            { "key": "occupation", "value": "Engineer", "type": "text" },
+            {
+              "key": "profile_image",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/update_reg/profile"
+      }
+    },
+    {
+      "name": "4. Get single profile (verify after update)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/single/user/profile/?user_id=REPLACE_WITH_HASHED_USER_ID",
+          "host": ["{{baseUrl}}"],
+          "path": ["single", "user", "profile", ""],
+          "query": [
+            {
+              "key": "user_id",
+              "value": "REPLACE_WITH_HASHED_USER_ID",
+              "description": "Use hashed uuid from profile/match list — not numeric user_id"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
