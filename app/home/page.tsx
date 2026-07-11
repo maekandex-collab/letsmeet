@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ProfilePhoto from "@/components/ProfilePhoto";
+import DiscoverEmptyState from "@/components/DiscoverEmptyState";
 import {
   swipeProfile,
   prefetchMedia,
@@ -20,6 +21,7 @@ import {
   linkMatchRoomIds,
   extractRoomIdFromMatchResponse,
   type ProfileCard,
+  type DiscoverEmptyReason,
 } from "@/lib/letsmeet";
 
 export default function HomePage() {
@@ -30,6 +32,30 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [swipeError, setSwipeError] = useState("");
   const [feedError, setFeedError] = useState("");
+  const [emptyReason, setEmptyReason] = useState<DiscoverEmptyReason>(null);
+  const [platformUserCount, setPlatformUserCount] = useState<number | undefined>();
+
+  function applyFeedResult(result: Awaited<ReturnType<typeof fetchDiscoverFeed>>) {
+    if (!result.ok) {
+      setFeedError(result.error ?? "Could not load profiles. Try again.");
+      setEmptyReason(null);
+      setPlatformUserCount(undefined);
+      setCards([]);
+      return;
+    }
+
+    setEmptyReason(result.emptyReason ?? null);
+    setPlatformUserCount(result.platformUserCount);
+    setFeedError(
+      result.notice && !result.emptyReason && result.cards.length > 0 ? result.notice : ""
+    );
+    setCards(result.cards);
+
+    if (result.cards.length > 0) {
+      writeFeedSnapshot(result.cards, 0);
+      prefetchMedia(result.cards.map((c) => c.profile_photo), 12, 3);
+    }
+  }
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -54,42 +80,27 @@ export default function HomePage() {
     (async () => {
       try {
         const result = await fetchDiscoverFeed();
-        if (!result.ok) {
-          setFeedError(result.error ?? "Could not load profiles. Try again.");
-          return;
-        }
-        if (result.notice) setFeedError(result.notice);
-        else setFeedError("");
-        setCards(result.cards);
-        if (result.cards.length > 0) {
-          writeFeedSnapshot(result.cards, 0);
-          prefetchMedia(result.cards.map((c) => c.profile_photo), 12, 3);
-        }
+        applyFeedResult(result);
       } finally {
         setLoading(false);
       }
     })();
   }, [router]);
 
-  function handleClearFilters() {
-    resetDiscoverLocalState();
+  function handleRefreshDiscover() {
     clearFeedSnapshot();
     setFeedError("");
-    setCards([]);
+    setEmptyReason(null);
     setLoading(true);
     void fetchDiscoverFeed().then((result) => {
       setLoading(false);
-      if (!result.ok) {
-        setFeedError(result.error ?? "Could not load profiles.");
-        return;
-      }
-      if (result.notice) setFeedError(result.notice);
-      setCards(result.cards);
-      if (result.cards.length > 0) writeFeedSnapshot(result.cards, 0);
-      else if (!result.notice) {
-        setFeedError("No profiles available right now — the backend feed may be empty.");
-      }
+      applyFeedResult(result);
     });
+  }
+
+  function handleClearFilters() {
+    resetDiscoverLocalState();
+    handleRefreshDiscover();
   }
 
   useEffect(() => {
@@ -185,7 +196,15 @@ export default function HomePage() {
             </div>
           )}
 
-          {!loading && cards.length === 0 && (
+          {!loading && cards.length === 0 && emptyReason && (
+            <DiscoverEmptyState
+              reason={emptyReason}
+              platformUserCount={platformUserCount}
+              onRefresh={handleRefreshDiscover}
+            />
+          )}
+
+          {!loading && cards.length === 0 && !emptyReason && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
               <div className="w-20 h-20 rounded-full bg-primary-light flex items-center justify-center mb-4">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none">

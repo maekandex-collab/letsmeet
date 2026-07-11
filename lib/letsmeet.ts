@@ -665,17 +665,20 @@ export function buildAudioCallHref(roomId: number | string): string {
   return `/video-call/${roomId}?audio=1`;
 }
 
-/** Clean chat URL — only numeric room id (or `/chat/pending` before room is known). */
+/** Chat URL — prefer chatroom UUID (matches REST + WebSocket). */
 export function buildChatHref(card: ProfileCard): string {
+  const chatroom = card.chatroom_id?.trim();
+  if (chatroom) return `/chat/${chatroom}`;
   const roomId = resolveNumericRoomId(card);
   return roomId != null ? `/chat/${roomId}` : "/chat/pending";
 }
 
-/** Stable inbox / storage key for a match conversation. */
+/** Stable inbox / storage key — must match chatroom UUID used by the API. */
 export function chatRoomKey(card: ProfileCard): string {
+  const chatroom = card.chatroom_id?.trim();
+  if (chatroom) return chatroom;
   const numeric = resolveNumericRoomId(card);
   if (numeric != null) return String(numeric);
-  if (card.chatroom_id) return String(card.chatroom_id).trim();
   return String(card.id);
 }
 
@@ -794,8 +797,17 @@ function chatStorageKeys(roomId: string | number): string[] {
   const keys = new Set<string>();
   const raw = String(roomId).trim();
   if (raw) keys.add(raw);
+
+  const peer = readChatPeer();
+  if (peer?.chatroomId) keys.add(peer.chatroomId.trim());
+  if (peer?.roomId != null) keys.add(String(peer.roomId));
+
+  const stashed = getStashedChatRoomId(raw);
+  if (stashed != null) keys.add(String(stashed));
+
   const apiRoomId = resolveApiRoomId(roomId);
   if (apiRoomId != null) keys.add(String(apiRoomId));
+
   return Array.from(keys);
 }
 
@@ -1250,12 +1262,38 @@ export function sanitizeDiscoverPrefs(): DiscoverPreferences {
   return prefs;
 }
 
+export type DiscoverEmptyReason =
+  | "incomplete_profile"
+  | "empty_pool"
+  | "all_swiped"
+  | null;
+
 export type DiscoverFeedResult = {
   ok: boolean;
   cards: ProfileCard[];
   error?: string;
   notice?: string;
+  emptyReason?: DiscoverEmptyReason;
+  /** Discoverable profiles returned by the API (before local swipe hiding). */
+  platformUserCount?: number;
 };
+
+/** True when the backend has a usable profile (name, gender, photo). */
+export async function verifyProfileOnBackend(): Promise<boolean> {
+  const result = await fetchMyProfile();
+  if (!result.ok || !result.profile) return false;
+  const p = result.profile;
+  return Boolean(
+    p.name?.trim() && p.gender?.trim() && p.profile_image?.trim()
+  );
+}
+
+/** Reconcile local `profileCompleted` with what the API actually has. */
+export async function syncProfileCompletedFromBackend(): Promise<boolean> {
+  const ready = await verifyProfileOnBackend();
+  updateUser({ profileCompleted: ready });
+  return ready;
+}
 
 /** Load discover feed — age filters only (religion filter disabled until backend supports it). */
 export async function fetchDiscoverFeed(): Promise<DiscoverFeedResult> {
@@ -1268,8 +1306,9 @@ export async function fetchDiscoverFeed(): Promise<DiscoverFeedResult> {
 
   const load = async (filters?: FeedFilters) => {
     const res = await getFeed(filters);
-    const cards = res.ok ? filterSwipedCards(parseProfileCards(res.data)) : [];
-    return { res, cards };
+    const all = res.ok ? parseProfileCards(res.data) : [];
+    const cards = filterSwipedCards(all);
+    return { res, all, cards };
   };
 
   const { res, cards } = await load(ageFilters);
@@ -1289,20 +1328,53 @@ export async function fetchDiscoverFeed(): Promise<DiscoverFeedResult> {
         ok: true,
         cards: bare.cards,
         notice: "Showing all available profiles (age filter had no matches).",
+        platformUserCount: bare.all.length,
       };
     }
-    const user = getUser();
-    const hint = user?.profileCompleted
-      ? "The server returned no profiles. The discover pool may be empty, or your profile may not be fully synced — try signing out and back in."
-      : "Finish setting up your profile to start discovering people.";
+
+    const platformUserCount = bare.all.length;
+    const visibleAfterSwipe = bare.cards.length;
+    const profileReady = await syncProfileCompletedFromBackend();
+
+    if (!profileReady) {
+      return {
+        ok: true,
+        cards: [],
+        emptyReason: "incomplete_profile",
+        platformUserCount,
+        notice: "Finish setting up your profile to appear in Discover.",
+      };
+    }
+
+    if (platformUserCount === 0) {
+      return {
+        ok: true,
+        cards: [],
+        emptyReason: "empty_pool",
+        platformUserCount: 0,
+      };
+    }
+
+    if (visibleAfterSwipe === 0) {
+      return {
+        ok: true,
+        cards: [],
+        emptyReason: "all_swiped",
+        platformUserCount,
+      };
+    }
+
     return {
       ok: true,
       cards: [],
-      notice: hint,
+      emptyReason: "empty_pool",
+      platformUserCount,
+      notice:
+        "No profiles match your filters right now. Try resetting filters or check back later.",
     };
   }
 
-  return { ok: true, cards };
+  return { ok: true, cards, platformUserCount: cards.length };
 }
 
 export function getFeed(filters?: FeedFilters) {

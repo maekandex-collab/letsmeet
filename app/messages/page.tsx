@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
@@ -87,15 +87,19 @@ export default function MessagesPage() {
     })();
   }, [pathname, loadMatches, hydratePreviews]);
 
-  const filtered = matches
-    .filter((m) => m.name.toLowerCase().includes(query.toLowerCase()))
-    .sort((a, b) => {
-      const aKey = inboxKeyForMatch(a);
-      const bKey = inboxKeyForMatch(b);
-      const aAt = getInboxEntry(aKey)?.lastAt ?? 0;
-      const bAt = getInboxEntry(bKey)?.lastAt ?? 0;
-      return bAt - aAt;
-    });
+  const filtered = useMemo(
+    () =>
+      matches
+        .filter((m) => m.name.toLowerCase().includes(query.toLowerCase()))
+        .sort((a, b) => {
+          const aKey = inboxKeyForMatch(a);
+          const bKey = inboxKeyForMatch(b);
+          const aAt = inboxMap[aKey]?.lastAt ?? getInboxEntry(aKey)?.lastAt ?? 0;
+          const bAt = inboxMap[bKey]?.lastAt ?? getInboxEntry(bKey)?.lastAt ?? 0;
+          return bAt - aAt;
+        }),
+    [matches, query, inboxMap]
+  );
 
   const totalUnreadDisplay = totalUnread;
 

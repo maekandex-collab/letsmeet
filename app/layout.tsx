@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import RouteLoader from "@/components/RouteLoader";
 import GlobalIncomingCall from "@/components/GlobalIncomingCall";
+import GlobalChatListener from "@/components/GlobalChatListener";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://letsmeet-sand.vercel.app";
@@ -81,6 +82,7 @@ export default function RootLayout({
       <body className="font-urbanist antialiased bg-white">
         <RouteLoader />
         <GlobalIncomingCall />
+        <GlobalChatListener />
         {children}
       </body>
     </html>

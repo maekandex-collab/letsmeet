@@ -269,6 +269,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     setMessages((prev) => {
       const next = [...prev, optimistic];
       syncInboxFromMessages(roomId, next, peerMeta());
+      saveChatMessages(storageKey, next);
       return next;
     });
     setInput("");
@@ -282,6 +283,17 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         setError(extractError(res.data, "Message failed to save."));
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
         return;
+      }
+
+      if (res.data?.message_id != null) {
+        setMessages((prev) => {
+          const next = prev.map((m) =>
+            m.id === optimistic.id ? { ...m, id: res.data!.message_id! } : m
+          );
+          saveChatMessages(storageKey, next);
+          syncInboxFromMessages(roomId, next, peerMeta());
+          return next;
+        });
       }
     } catch {
       setError("Network error. Message not sent.");

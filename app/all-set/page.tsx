@@ -14,7 +14,7 @@ export default function AllSetPage() {
         </div>
         <h1 className="text-3xl font-bold text-dark mb-3">You&apos;re All Set! 🎉</h1>
         <p className="text-base text-muted leading-6 max-w-xs">
-          Your profile has been successfully set up. Time to start matching!
+          Your profile is live on Discover. Invite friends if the pool looks quiet — matching works best with more people nearby.
         </p>
       </div>
 

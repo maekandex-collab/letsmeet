@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import { InputField, SelectField } from "@/components/FormFields";
-import { uploadProfile, extractError, updateUser, getUser, storeUserReligion, extractHashedUserId, storeHashedUserId } from "@/lib/letsmeet";
+import { uploadProfile, extractError, updateUser, getUser, storeUserReligion, extractHashedUserId, storeHashedUserId, verifyProfileOnBackend } from "@/lib/letsmeet";
 import { getDraft, clearDraft, dataUrlToBlob } from "@/lib/profileDraft";
 
 export default function ProfileSetupPage() {
@@ -63,12 +63,30 @@ export default function ProfileSetupPage() {
         image2,
       });
 
-      // The backend currently marks the profile complete even when it returns
-      // a 500 on the image step, so we proceed unless it's a hard validation error.
       if (res.ok || res.status === 500) {
         const hash = extractHashedUserId(res.data);
         if (hash) storeHashedUserId(hash);
         if (draft.religion) storeUserReligion(draft.religion);
+
+        let verified = false;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          if (await verifyProfileOnBackend()) {
+            verified = true;
+            break;
+          }
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 800));
+          }
+        }
+
+        if (!verified) {
+          updateUser({ profileCompleted: false });
+          setError(
+            "We saved your details, but your profile is not live on Discover yet. Wait a moment and tap Continue again."
+          );
+          return;
+        }
+
         updateUser({ profileCompleted: true });
         clearDraft();
         router.push("/all-set");
