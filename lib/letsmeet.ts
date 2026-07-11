@@ -753,6 +753,32 @@ export function getStashedChatRoomId(chatroomId: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Inbox storage key — prefer chatroom UUID so it matches the messages list sort key. */
+export function resolveCanonicalInboxKey(roomId: string | number): string {
+  const raw = String(roomId).trim();
+  if (!raw) return raw;
+  if (!/^\d+$/.test(raw)) return raw;
+
+  const peer = readChatPeer();
+  if (peer?.chatroomId?.trim()) return peer.chatroomId.trim();
+
+  if (typeof window !== "undefined") {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith(CHAT_ROOM_PREFIX)) continue;
+        if (localStorage.getItem(key) === raw) {
+          return key.slice(CHAT_ROOM_PREFIX.length);
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  return raw;
+}
+
 /** Numeric room id for REST message APIs (send + history). */
 export function resolveApiRoomId(roomId: string | number): number | null {
   const raw = String(roomId).trim();
@@ -1075,6 +1101,8 @@ export interface SingleProfile {
   date_of_birth: number; // backend returns age here
   about_me: string;
   profile_image: string | null;
+  image1?: string | null;
+  image2?: string | null;
   location: string;
   religion: string | null;
   gender: string;
@@ -1511,6 +1539,8 @@ export function normalizeSingleProfile(raw: Record<string, unknown>): SingleProf
         : typeof raw.profile_photo === "string"
           ? raw.profile_photo
           : null,
+    image1: typeof raw.image1 === "string" ? raw.image1 : null,
+    image2: typeof raw.image2 === "string" ? raw.image2 : null,
     location: String(raw.location ?? ""),
     religion: raw.religion != null ? String(raw.religion) : null,
     gender: String(raw.gender ?? ""),

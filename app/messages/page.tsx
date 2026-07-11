@@ -81,11 +81,9 @@ export default function MessagesPage() {
   useEffect(() => {
     if (pathname !== "/messages") return;
     setAvatarEpoch((n) => n + 1);
-    void (async () => {
-      const list = await loadMatches();
-      await hydratePreviews(list);
-    })();
-  }, [pathname, loadMatches, hydratePreviews]);
+    window.dispatchEvent(new Event("lm-inbox-change"));
+    void loadMatches();
+  }, [pathname, loadMatches]);
 
   const filtered = useMemo(
     () =>

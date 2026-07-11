@@ -18,13 +18,17 @@ const VIDEO_CAPTURE: MediaTrackConstraints = {
 const VIDEO_MAX_BITRATE = 150_000; // 150 kbps
 const VIDEO_MAX_FRAMERATE = 15;
 
-/** STUN only for now — TURN credentials will come from a backend endpoint later. */
+/** STUN + TURN — relay via turner.lenhub.net when direct P2P fails. */
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
+  {
+    urls: ["turn:turner.lenhub.net:3478?transport=udp"],
+    username: "webrtc",
+    credential: "YourStrongPassword123!",
+  },
 ];
 
 async function buildRtcConfig(): Promise<RTCConfiguration> {
-  // TODO: fetch TURN urls/username/credential from backend when endpoint is ready.
   return {
     iceServers: DEFAULT_ICE_SERVERS,
     iceTransportPolicy: "all",

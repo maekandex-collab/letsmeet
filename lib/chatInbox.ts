@@ -1,4 +1,9 @@
-import type { StoredChatMessage } from "@/lib/letsmeet";
+import {
+  loadChatMessages,
+  mergeChatMessages,
+  resolveCanonicalInboxKey,
+  type StoredChatMessage,
+} from "@/lib/letsmeet";
 
 export interface ChatInboxEntry {
   roomId: string;
@@ -13,8 +18,8 @@ export interface ChatInboxEntry {
 
 const INBOX_KEY = "lm_chat_inbox";
 
-function roomKey(roomId: string | number): string {
-  return String(roomId).trim();
+function inboxKey(roomId: string | number): string {
+  return resolveCanonicalInboxKey(roomId);
 }
 
 function loadInboxMap(): Record<string, ChatInboxEntry> {
@@ -41,7 +46,13 @@ function saveInboxMap(map: Record<string, ChatInboxEntry>): void {
 
 export function getInboxEntry(roomId: string | number): ChatInboxEntry | null {
   const map = loadInboxMap();
-  return map[roomKey(roomId)] ?? null;
+  const canonical = inboxKey(roomId);
+  if (map[canonical]) return map[canonical];
+
+  const raw = String(roomId).trim();
+  if (raw && raw !== canonical && map[raw]) return map[raw];
+
+  return null;
 }
 
 export function getAllInboxEntries(): ChatInboxEntry[] {
@@ -66,26 +77,35 @@ export function syncInboxFromMessages(
   messages: StoredChatMessage[],
   peer?: { userId?: string | null; name?: string; photo?: string | null }
 ): ChatInboxEntry {
-  const key = roomKey(roomId);
+  const key = inboxKey(roomId);
   const map = loadInboxMap();
-  const existing = map[key];
+  const existing = map[key] ?? map[String(roomId).trim()];
   const lastReadAt = existing?.lastReadAt ?? 0;
 
-  const sorted = [...messages].sort((a, b) => a.at - b.at);
+  const merged = mergeChatMessages(loadChatMessages(roomId), messages);
+  const sorted = [...merged].sort((a, b) => a.at - b.at);
   const last = sorted[sorted.length - 1];
+  const mergedLastAt = last?.at ?? 0;
+  const lastAt = Math.max(mergedLastAt, existing?.lastAt ?? 0);
+  const lastText =
+    mergedLastAt >= lastAt
+      ? last?.text ?? existing?.lastText ?? ""
+      : existing?.lastText ?? last?.text ?? "";
 
   const entry: ChatInboxEntry = {
     roomId: key,
     peerUserId: peer?.userId ?? existing?.peerUserId ?? "",
     peerName: peer?.name ?? existing?.peerName ?? "Chat",
     peerPhoto: peer?.photo ?? existing?.peerPhoto ?? null,
-    lastText: last?.text ?? existing?.lastText ?? "",
-    lastAt: last?.at ?? existing?.lastAt ?? 0,
+    lastText,
+    lastAt,
     lastReadAt,
     unreadCount: countUnread(sorted, lastReadAt),
   };
 
   map[key] = entry;
+  const raw = String(roomId).trim();
+  if (raw && raw !== key) delete map[raw];
   saveInboxMap(map);
   return entry;
 }
@@ -94,9 +114,9 @@ export function upsertInboxPeer(
   roomId: string | number,
   peer: { userId?: string | null; name?: string; photo?: string | null }
 ): void {
-  const key = roomKey(roomId);
+  const key = inboxKey(roomId);
   const map = loadInboxMap();
-  const existing = map[key] ?? {
+  const existing = map[key] ?? map[String(roomId).trim()] ?? {
     roomId: key,
     peerUserId: "",
     peerName: "Chat",
@@ -109,10 +129,13 @@ export function upsertInboxPeer(
 
   map[key] = {
     ...existing,
+    roomId: key,
     peerUserId: peer.userId ?? existing.peerUserId,
     peerName: peer.name ?? existing.peerName,
     peerPhoto: peer.photo ?? existing.peerPhoto,
   };
+  const raw = String(roomId).trim();
+  if (raw && raw !== key) delete map[raw];
   saveInboxMap(map);
 }
 
@@ -122,9 +145,9 @@ export function bumpIncoming(
   at: number,
   peer?: { userId?: string | null; name?: string; photo?: string | null }
 ): ChatInboxEntry {
-  const key = roomKey(roomId);
+  const key = inboxKey(roomId);
   const map = loadInboxMap();
-  const existing = map[key] ?? {
+  const existing = map[key] ?? map[String(roomId).trim()] ?? {
     roomId: key,
     peerUserId: peer?.userId ?? "",
     peerName: peer?.name ?? "Chat",
@@ -137,30 +160,73 @@ export function bumpIncoming(
 
   const entry: ChatInboxEntry = {
     ...existing,
+    roomId: key,
     peerUserId: peer?.userId ?? existing.peerUserId,
     peerName: peer?.name ?? existing.peerName,
     peerPhoto: peer?.photo ?? existing.peerPhoto,
     lastText: text,
-    lastAt: at,
+    lastAt: Math.max(at, existing.lastAt),
     unreadCount: at > existing.lastReadAt ? existing.unreadCount + 1 : existing.unreadCount,
   };
 
   map[key] = entry;
+  const raw = String(roomId).trim();
+  if (raw && raw !== key) delete map[raw];
+  saveInboxMap(map);
+  return entry;
+}
+
+/** Move a conversation to the top after the signed-in user sends a message. */
+export function bumpOutgoing(
+  roomId: string | number,
+  text: string,
+  at: number,
+  peer?: { userId?: string | null; name?: string; photo?: string | null }
+): ChatInboxEntry {
+  const key = inboxKey(roomId);
+  const map = loadInboxMap();
+  const existing = map[key] ?? map[String(roomId).trim()] ?? {
+    roomId: key,
+    peerUserId: peer?.userId ?? "",
+    peerName: peer?.name ?? "Chat",
+    peerPhoto: peer?.photo ?? null,
+    lastText: "",
+    lastAt: 0,
+    unreadCount: 0,
+    lastReadAt: 0,
+  };
+
+  const entry: ChatInboxEntry = {
+    ...existing,
+    roomId: key,
+    peerUserId: peer?.userId ?? existing.peerUserId,
+    peerName: peer?.name ?? existing.peerName,
+    peerPhoto: peer?.photo ?? existing.peerPhoto,
+    lastText: text,
+    lastAt: Math.max(at, existing.lastAt),
+  };
+
+  map[key] = entry;
+  const raw = String(roomId).trim();
+  if (raw && raw !== key) delete map[raw];
   saveInboxMap(map);
   return entry;
 }
 
 export function markRoomRead(roomId: string | number): void {
-  const key = roomKey(roomId);
+  const key = inboxKey(roomId);
   const map = loadInboxMap();
-  const existing = map[key];
+  const existing = map[key] ?? map[String(roomId).trim()];
   if (!existing) return;
 
   map[key] = {
     ...existing,
+    roomId: key,
     lastReadAt: Date.now(),
     unreadCount: 0,
   };
+  const raw = String(roomId).trim();
+  if (raw && raw !== key) delete map[raw];
   saveInboxMap(map);
 }
 

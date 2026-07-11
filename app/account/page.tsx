@@ -1,10 +1,13 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import ProfilePhoto from "@/components/ProfilePhoto";
+import ProfilePhotoEditor, {
+  emptyPhotoSlot,
+  type ProfilePhotoSlot,
+} from "@/components/ProfilePhotoEditor";
 import {
   getUser,
   clearSession,
@@ -93,7 +96,6 @@ const SETTINGS = [
 
 export default function AccountPage() {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,9 +104,11 @@ export default function AccountPage() {
   const [phone, setPhone] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState("");
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [pendingPhotoBlob, setPendingPhotoBlob] = useState<Blob | null>(null);
+  const [photos, setPhotos] = useState<ProfilePhotoSlot[]>([
+    emptyPhotoSlot(),
+    emptyPhotoSlot(),
+    emptyPhotoSlot(),
+  ]);
 
   const [aboutMe, setAboutMe] = useState("");
   const [location, setLocation] = useState("");
@@ -141,10 +145,16 @@ export default function AccountPage() {
         if (p.interests) setInterests(p.interests);
         if (p.sexual_orientation) setSexualOrientation(p.sexual_orientation);
         if (p.religion) setReligion(p.religion);
-        if (p.profile_image) {
-          setProfileImage(p.profile_image);
-          prefetchMedia([p.profile_image], 1);
-        }
+        const urls = [p.profile_image, p.image1 ?? null, p.image2 ?? null];
+        prefetchMedia(urls.filter(Boolean) as string[], 3);
+        setPhotos(
+          urls.map((url) => ({
+            url,
+            preview: null,
+            pendingBlob: null,
+            removed: false,
+          }))
+        );
         if (p.date_of_birth > 0 && p.date_of_birth < 120) {
           setProfileAge(p.date_of_birth);
         }
@@ -155,13 +165,15 @@ export default function AccountPage() {
     })();
   }, [router]);
 
-  function onPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPendingPhotoBlob(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+  async function blobForSlot(slot: ProfilePhotoSlot): Promise<Blob | null> {
+    if (slot.removed) return null;
+    if (slot.pendingBlob) return slot.pendingBlob;
+    if (slot.url) return fetchMediaBlob(slot.url);
+    return null;
+  }
+
+  function slotHasPhoto(slot: ProfilePhotoSlot): boolean {
+    return !slot.removed && !!(slot.preview || slot.url || slot.pendingBlob);
   }
 
   async function handleSave() {
@@ -171,14 +183,14 @@ export default function AccountPage() {
 
     setSaving(true);
     try {
-      let imageBlob = pendingPhotoBlob;
-      if (!imageBlob && profileImage) {
-        imageBlob = await fetchMediaBlob(profileImage);
-      }
-      if (!imageBlob) {
-        setError("A profile photo is required to save. Tap the camera icon to add one.");
+      const mainBlob = await blobForSlot(photos[0]);
+      if (!mainBlob) {
+        setError("Add a main profile photo before saving.");
         return;
       }
+
+      const image1Blob = await blobForSlot(photos[1]);
+      const image2Blob = await blobForSlot(photos[2]);
 
       const res = await uploadProfile({
         sexual_orientation: sexualOrientation || "Straight",
@@ -187,18 +199,28 @@ export default function AccountPage() {
         about_me: aboutMe.trim() || "Hello!",
         location: location.trim() || "Nigeria",
         show_location: true,
-        profile_image: imageBlob,
+        profile_image: mainBlob,
+        image1: image1Blob,
+        image2: image2Blob,
         religion: religion ?? undefined,
       });
 
       if (res.ok || res.status === 500) {
         if (name.trim()) updateUser({ fullName: name.trim() });
         setSuccess("Profile updated successfully.");
-        setPendingPhotoBlob(null);
-        setPhotoPreview(null);
         const refreshed = await fetchMyProfile();
-        if (refreshed.profile?.profile_image) {
-          setProfileImage(refreshed.profile.profile_image);
+        if (refreshed.profile) {
+          const p = refreshed.profile;
+          const urls = [p.profile_image, p.image1 ?? null, p.image2 ?? null];
+          prefetchMedia(urls.filter(Boolean) as string[], 3);
+          setPhotos(
+            urls.map((url) => ({
+              url,
+              preview: null,
+              pendingBlob: null,
+              removed: false,
+            }))
+          );
         }
       } else {
         setError(extractError(res.data, "Could not save your profile."));
@@ -219,16 +241,25 @@ export default function AccountPage() {
     <div className="mobile-shell flex flex-col min-h-dvh bg-white">
       <LogoHeader
         right={
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-border transition-colors"
-            aria-label="Settings"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="3" stroke="#12151C" strokeWidth="2"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="#12151C" strokeWidth="2"/>
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-border transition-colors"
+              aria-label="Settings"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="3" stroke="#12151C" strokeWidth="2"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="#12151C" strokeWidth="2"/>
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="text-xs font-bold text-red-600 px-2.5 py-2 rounded-full hover:bg-red-50 transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
         }
       />
 
@@ -241,40 +272,13 @@ export default function AccountPage() {
           </div>
         ) : (
           <>
-            {/* Profile photo */}
-            <div className="flex flex-col items-center pt-6 pb-6">
-              <div className="relative">
-                <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-card bg-primary-light">
-                  {photoPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={photoPreview} alt="profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <ProfilePhoto photo={profileImage} alt={name || "Your profile"} priority />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-md border-2 border-white"
-                  aria-label="Change profile photo"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="white" strokeWidth="2" strokeLinejoin="round"/>
-                    <circle cx="12" cy="13" r="4" stroke="white" strokeWidth="2"/>
-                  </svg>
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={onPhotoChange}
-                />
-              </div>
-            </div>
+            <ProfilePhotoEditor slots={photos} onChange={setPhotos} />
 
             {notice && (
-              <p className="text-xs text-muted text-center mb-4 px-2">{notice}</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
+                {notice}
+                {!photos.some(slotHasPhoto) && " Add at least one photo below, then tap Save Changes."}
+              </p>
             )}
 
             <div className="space-y-5">
@@ -376,20 +380,6 @@ export default function AccountPage() {
               className="btn-primary w-full mt-8 disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save Changes"}
-            </button>
-
-            {/* Sign out — visible on main screen */}
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="w-full mt-4 py-3.5 px-8 rounded-xl border-2 border-red-200 bg-red-50 text-red-600 font-bold text-base flex items-center justify-center gap-2 transition-colors hover:bg-red-100 active:bg-red-100"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              Sign Out
             </button>
           </>
         )}

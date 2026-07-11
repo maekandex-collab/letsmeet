@@ -29,6 +29,7 @@ import {
   formatDateSeparator,
   markRoomRead,
   syncInboxFromMessages,
+  bumpOutgoing,
   upsertInboxPeer,
 } from "@/lib/chatInbox";
 import ChatComposer from "@/components/ChatComposer";
@@ -268,6 +269,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     };
     setMessages((prev) => {
       const next = [...prev, optimistic];
+      bumpOutgoing(roomId, text, optimistic.at, peerMeta());
       syncInboxFromMessages(roomId, next, peerMeta());
       saveChatMessages(storageKey, next);
       return next;
