@@ -39,6 +39,7 @@ export function callWsUrl(roomId: string | number): string {
 const TOKEN_KEY = "lm_token";
 const USER_KEY = "lm_user";
 const LOGIN_PROFILE_CACHE_KEY = "lm_login_profile_cache";
+const LOCAL_PROFILE_DRAFT_KEY = "lm_local_profile_draft";
 
 export interface SessionUser {
   userId: number;
@@ -173,6 +174,7 @@ export function clearSession(): void {
   try {
     window.localStorage.removeItem(HASHED_USER_ID_KEY);
     window.localStorage.removeItem(LOGIN_PROFILE_CACHE_KEY);
+    window.localStorage.removeItem(LOCAL_PROFILE_DRAFT_KEY);
   } catch {
     // ignore
   }
@@ -1084,11 +1086,63 @@ export function getLoginProfileCache(): LoginProfileCache | null {
   }
 }
 
+export interface LocalProfileDraft {
+  full_name?: string;
+  gender?: string;
+  about_me?: string;
+  location?: string;
+  interests?: string;
+  sexual_orientation?: string;
+  religion?: string | null;
+  profile_image: string | null;
+  image1: string | null;
+  image2: string | null;
+  savedAt: number;
+}
+
+export function storeLocalProfileDraft(draft: LocalProfileDraft): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOCAL_PROFILE_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // quota — best effort
+  }
+}
+
+export function getLocalProfileDraft(): LocalProfileDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PROFILE_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LocalProfileDraft;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isProfileAlreadyCompletedError(
+  res: ApiResult<unknown>
+): boolean {
+  if (res.status !== 400 || !res.data || typeof res.data !== "object") {
+    return false;
+  }
+  const msg = String((res.data as Record<string, unknown>).message ?? "").toLowerCase();
+  return msg.includes("profile") && msg.includes("completed");
+}
+
 export function profileImageUrlsFromCache(
   cache: LoginProfileCache | null | undefined
 ): [string | null, string | null, string | null] {
   if (!cache) return [null, null, null];
   return [cache.profile_image, cache.image1, cache.image2];
+}
+
+export function profileImageUrlsFromDraft(
+  draft: LocalProfileDraft | null | undefined
+): [string | null, string | null, string | null] {
+  if (!draft) return [null, null, null];
+  return [draft.profile_image, draft.image1, draft.image2];
 }
 
 /** Backend returns 400 with a token when credentials are valid but profile is incomplete. */
@@ -1358,6 +1412,87 @@ export function uploadProfile(fields: ProfileUploadFields) {
   if (fields.image1) form.append("image1", fields.image1, "image1.jpg");
   if (fields.image2) form.append("image2", fields.image2, "image2.jpg");
   return request("/update_reg/profile", { method: "POST", form, auth: true });
+}
+
+/** Photo-only update for completed profiles — API requires all 3 image files. */
+export function uploadProfileImages(images: {
+  profile_image: Blob;
+  image1: Blob;
+  image2: Blob;
+}) {
+  const form = new FormData();
+  form.append("profile_image", images.profile_image, "profile.jpg");
+  form.append("image1", images.image1, "image1.jpg");
+  form.append("image2", images.image2, "image2.jpg");
+  return request("/update_user/image", { method: "POST", form, auth: true });
+}
+
+export type SaveAccountProfileInput = ProfileUploadFields & {
+  fullName?: string;
+  photoUrls?: [string | null, string | null, string | null];
+};
+
+export type SaveAccountProfileResult =
+  | { ok: true; localOnly?: false }
+  | { ok: true; localOnly: true }
+  | { ok: false; error: string };
+
+/**
+ * Save profile from the account screen.
+ * Tries full update, then photo-only update; if the server blocks completed
+ * profiles, persists a local draft so the UI still reflects user edits.
+ */
+export async function saveAccountProfile(
+  fields: SaveAccountProfileInput
+): Promise<SaveAccountProfileResult> {
+  const full = await uploadProfile(fields);
+  if (full.ok || full.status === 500) {
+    return { ok: true };
+  }
+
+  if (isProfileAlreadyCompletedError(full)) {
+    const image1 = fields.image1 ?? fields.profile_image;
+    const image2 = fields.image2 ?? fields.profile_image;
+    const photos = await uploadProfileImages({
+      profile_image: fields.profile_image,
+      image1,
+      image2,
+    });
+    if (photos.ok) {
+      return { ok: true };
+    }
+
+    const urls = fields.photoUrls ?? [null, null, null];
+    storeLocalProfileDraft({
+      full_name: fields.fullName,
+      gender: fields.gender,
+      about_me: fields.about_me,
+      location: fields.location,
+      interests: fields.interests,
+      sexual_orientation: fields.sexual_orientation,
+      religion: fields.religion ?? null,
+      profile_image: urls[0],
+      image1: urls[1],
+      image2: urls[2],
+      savedAt: Date.now(),
+    });
+    storeLoginProfileCache({
+      profile_image: urls[0],
+      image1: urls[1],
+      image2: urls[2],
+      gender: fields.gender,
+      full_name: fields.fullName,
+    });
+    if (fields.fullName?.trim()) {
+      updateUser({ fullName: fields.fullName.trim() });
+    }
+    return { ok: true, localOnly: true };
+  }
+
+  return {
+    ok: false,
+    error: extractError(full.data, "Could not save your profile."),
+  };
 }
 
 export interface FeedFilters {

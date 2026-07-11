@@ -14,14 +14,16 @@ import {
   clearSession,
   isLoggedIn,
   fetchMyProfile,
-  uploadProfile,
   fetchMediaBlob,
   extractError,
   updateUser,
   prefetchMedia,
   getLoginProfileCache,
   profileImageUrlsFromCache,
+  getLocalProfileDraft,
+  profileImageUrlsFromDraft,
   storeLoginProfileCache,
+  saveAccountProfile,
 } from "@/lib/letsmeet";
 
 const SETTINGS = [
@@ -124,6 +126,7 @@ export default function AccountPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [success, setSuccess] = useState("");
+  const [localOnlyNotice, setLocalOnlyNotice] = useState("");
 
   function applyProfilePhotos(urls: [string | null, string | null, string | null]) {
     prefetchMedia(urls.filter(Boolean) as string[], 3);
@@ -131,11 +134,45 @@ export default function AccountPage() {
   }
 
   function applyLoginCacheFallback() {
+    const draft = getLocalProfileDraft();
+    if (draft) {
+      if (draft.full_name) setName(draft.full_name);
+      if (draft.gender) setGender(draft.gender);
+      if (draft.about_me) setAboutMe(draft.about_me);
+      if (draft.location) setLocation(draft.location);
+      if (draft.interests) setInterests(draft.interests);
+      if (draft.sexual_orientation) setSexualOrientation(draft.sexual_orientation);
+      if (draft.religion) setReligion(draft.religion);
+      applyProfilePhotos(profileImageUrlsFromDraft(draft));
+      setLocalOnlyNotice(
+        "Showing changes saved on this device. The server has not accepted profile edits yet."
+      );
+      return;
+    }
+
     const cache = getLoginProfileCache();
     if (!cache) return;
     if (cache.full_name) setName((prev) => prev || cache.full_name || "");
     if (cache.gender) setGender((prev) => prev || cache.gender || "");
     applyProfilePhotos(profileImageUrlsFromCache(cache));
+  }
+
+  async function photoUrlsForSave(
+    slots: ProfilePhotoSlot[]
+  ): Promise<[string | null, string | null, string | null]> {
+    const urls: (string | null)[] = [];
+    for (const slot of slots) {
+      if (slot.removed) {
+        urls.push(null);
+        continue;
+      }
+      if (slot.preview) {
+        urls.push(slot.preview);
+        continue;
+      }
+      urls.push(slot.url);
+    }
+    return urls as [string | null, string | null, string | null];
   }
 
   useEffect(() => {
@@ -196,6 +233,7 @@ export default function AccountPage() {
   async function handleSave() {
     setError("");
     setSuccess("");
+    setLocalOnlyNotice("");
     if (!gender) return setError("Please select your gender.");
 
     setSaving(true);
@@ -208,8 +246,9 @@ export default function AccountPage() {
 
       const image1Blob = await blobForSlot(photos[1]);
       const image2Blob = await blobForSlot(photos[2]);
+      const photoUrls = await photoUrlsForSave(photos);
 
-      const res = await uploadProfile({
+      const result = await saveAccountProfile({
         sexual_orientation: sexualOrientation || "Straight",
         gender,
         interests: interests.trim() || "General",
@@ -220,25 +259,36 @@ export default function AccountPage() {
         image1: image1Blob,
         image2: image2Blob,
         religion: religion ?? undefined,
+        fullName: name.trim() || undefined,
+        photoUrls,
       });
 
-      if (res.ok || res.status === 500) {
-        if (name.trim()) updateUser({ fullName: name.trim() });
-        setSuccess("Profile updated successfully.");
-        const refreshed = await fetchMyProfile();
-        if (refreshed.profile) {
-          const p = refreshed.profile;
-          applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
-          storeLoginProfileCache({
-            profile_image: p.profile_image,
-            image1: p.image1 ?? null,
-            image2: p.image2 ?? null,
-            gender: p.gender,
-            full_name: p.name,
-          });
-        }
-      } else {
-        setError(extractError(res.data, "Could not save your profile."));
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      if (result.localOnly) {
+        setSuccess("Saved on this device.");
+        setLocalOnlyNotice(
+          "The server is not accepting profile edits for completed accounts yet. Your changes are kept here and will need a backend update to go live on Discover."
+        );
+        return;
+      }
+
+      if (name.trim()) updateUser({ fullName: name.trim() });
+      setSuccess("Profile updated successfully.");
+      const refreshed = await fetchMyProfile();
+      if (refreshed.profile) {
+        const p = refreshed.profile;
+        applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
+        storeLoginProfileCache({
+          profile_image: p.profile_image,
+          image1: p.image1 ?? null,
+          image2: p.image2 ?? null,
+          gender: p.gender,
+          full_name: p.name,
+        });
       }
     } catch {
       setError("Network error. Please try again.");
@@ -384,6 +434,12 @@ export default function AccountPage() {
                 </div>
               </div>
             </div>
+
+            {localOnlyNotice && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-4">
+                {localOnlyNotice}
+              </p>
+            )}
 
             {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
             {success && <p className="text-sm text-green-600 mt-4">{success}</p>}
