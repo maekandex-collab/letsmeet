@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
@@ -15,7 +15,6 @@ import {
   isLoggedIn,
   fetchMyProfile,
   fetchMediaBlob,
-  extractError,
   updateUser,
   prefetchMedia,
   getLoginProfileCache,
@@ -133,7 +132,7 @@ export default function AccountPage() {
     setPhotos(photoSlotsFromUrls(urls));
   }
 
-  function applyLoginCacheFallback() {
+  const applyLoginCacheFallback = useCallback(() => {
     const draft = getLocalProfileDraft();
     if (draft) {
       if (draft.full_name) setName(draft.full_name);
@@ -155,7 +154,7 @@ export default function AccountPage() {
     if (cache.full_name) setName((prev) => prev || cache.full_name || "");
     if (cache.gender) setGender((prev) => prev || cache.gender || "");
     applyProfilePhotos(profileImageUrlsFromCache(cache));
-  }
+  }, []);
 
   async function photoUrlsForSave(
     slots: ProfilePhotoSlot[]
@@ -217,7 +216,7 @@ export default function AccountPage() {
       }
       setLoading(false);
     })();
-  }, [router]);
+  }, [router, applyLoginCacheFallback]);
 
   async function blobForSlot(slot: ProfilePhotoSlot): Promise<Blob | null> {
     if (slot.removed) return null;
