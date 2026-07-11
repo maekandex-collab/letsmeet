@@ -6,6 +6,7 @@ import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ProfilePhotoEditor, {
   emptyPhotoSlot,
+  photoSlotsFromUrls,
   type ProfilePhotoSlot,
 } from "@/components/ProfilePhotoEditor";
 import {
@@ -18,6 +19,9 @@ import {
   extractError,
   updateUser,
   prefetchMedia,
+  getLoginProfileCache,
+  profileImageUrlsFromCache,
+  storeLoginProfileCache,
 } from "@/lib/letsmeet";
 
 const SETTINGS = [
@@ -121,6 +125,19 @@ export default function AccountPage() {
   const [notice, setNotice] = useState("");
   const [success, setSuccess] = useState("");
 
+  function applyProfilePhotos(urls: [string | null, string | null, string | null]) {
+    prefetchMedia(urls.filter(Boolean) as string[], 3);
+    setPhotos(photoSlotsFromUrls(urls));
+  }
+
+  function applyLoginCacheFallback() {
+    const cache = getLoginProfileCache();
+    if (!cache) return;
+    if (cache.full_name) setName((prev) => prev || cache.full_name || "");
+    if (cache.gender) setGender((prev) => prev || cache.gender || "");
+    applyProfilePhotos(profileImageUrlsFromCache(cache));
+  }
+
   useEffect(() => {
     if (!isLoggedIn()) {
       router.replace("/sign-in");
@@ -134,6 +151,8 @@ export default function AccountPage() {
       setDateOfBirth(user.dateOfBirth ?? "");
     }
 
+    applyLoginCacheFallback();
+
     (async () => {
       const result = await fetchMyProfile();
       if (result.profile) {
@@ -145,16 +164,14 @@ export default function AccountPage() {
         if (p.interests) setInterests(p.interests);
         if (p.sexual_orientation) setSexualOrientation(p.sexual_orientation);
         if (p.religion) setReligion(p.religion);
-        const urls = [p.profile_image, p.image1 ?? null, p.image2 ?? null];
-        prefetchMedia(urls.filter(Boolean) as string[], 3);
-        setPhotos(
-          urls.map((url) => ({
-            url,
-            preview: null,
-            pendingBlob: null,
-            removed: false,
-          }))
-        );
+        applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
+        storeLoginProfileCache({
+          profile_image: p.profile_image,
+          image1: p.image1 ?? null,
+          image2: p.image2 ?? null,
+          gender: p.gender,
+          full_name: p.name,
+        });
         if (p.date_of_birth > 0 && p.date_of_birth < 120) {
           setProfileAge(p.date_of_birth);
         }
@@ -211,16 +228,14 @@ export default function AccountPage() {
         const refreshed = await fetchMyProfile();
         if (refreshed.profile) {
           const p = refreshed.profile;
-          const urls = [p.profile_image, p.image1 ?? null, p.image2 ?? null];
-          prefetchMedia(urls.filter(Boolean) as string[], 3);
-          setPhotos(
-            urls.map((url) => ({
-              url,
-              preview: null,
-              pendingBlob: null,
-              removed: false,
-            }))
-          );
+          applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
+          storeLoginProfileCache({
+            profile_image: p.profile_image,
+            image1: p.image1 ?? null,
+            image2: p.image2 ?? null,
+            gender: p.gender,
+            full_name: p.name,
+          });
         }
       } else {
         setError(extractError(res.data, "Could not save your profile."));

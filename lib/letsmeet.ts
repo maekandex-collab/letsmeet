@@ -38,6 +38,7 @@ export function callWsUrl(roomId: string | number): string {
 
 const TOKEN_KEY = "lm_token";
 const USER_KEY = "lm_user";
+const LOGIN_PROFILE_CACHE_KEY = "lm_login_profile_cache";
 
 export interface SessionUser {
   userId: number;
@@ -171,6 +172,7 @@ export function clearSession(): void {
   window.localStorage.removeItem(USER_KEY);
   try {
     window.localStorage.removeItem(HASHED_USER_ID_KEY);
+    window.localStorage.removeItem(LOGIN_PROFILE_CACHE_KEY);
   } catch {
     // ignore
   }
@@ -962,6 +964,131 @@ export interface LoginResponse {
   profile_completed: boolean;
   full_name?: string;
   date_of_birth?: string;
+  phone?: string;
+  gender?: string;
+  profile_image?: string | null;
+  profile_image_one?: string | null;
+  profile_image_two?: string | null;
+}
+
+export interface LoginProfileCache {
+  profile_image: string | null;
+  image1: string | null;
+  image2: string | null;
+  gender?: string;
+  full_name?: string;
+}
+
+/** Map live login JSON (names, date_birth, profile_image_one, etc.) onto app fields. */
+export function normalizeLoginResponse(raw: unknown): LoginResponse | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const token = obj.token;
+  if (typeof token !== "string" || token.length < 10) return null;
+
+  const userIdRaw = obj.user_id;
+  const user_id =
+    typeof userIdRaw === "number"
+      ? userIdRaw
+      : typeof userIdRaw === "string" && /^\d+$/.test(userIdRaw)
+        ? Number(userIdRaw)
+        : decodeUserIdFromToken(token) ?? 0;
+
+  return {
+    token,
+    user_id,
+    message: String(obj.message ?? ""),
+    date: String(obj.date ?? ""),
+    profile_completed: obj.profile_completed === true,
+    full_name:
+      typeof obj.full_name === "string"
+        ? obj.full_name
+        : typeof obj.names === "string"
+          ? obj.names
+          : undefined,
+    date_of_birth:
+      typeof obj.date_of_birth === "string"
+        ? obj.date_of_birth
+        : typeof obj.date_birth === "string"
+          ? obj.date_birth
+          : undefined,
+    phone: typeof obj.phone === "string" ? obj.phone : undefined,
+    gender: typeof obj.gender === "string" ? obj.gender : undefined,
+    profile_image: normalizeMediaInput(
+      typeof obj.profile_image === "string" ? obj.profile_image : null
+    ),
+    profile_image_one: normalizeMediaInput(
+      typeof obj.profile_image_one === "string"
+        ? obj.profile_image_one
+        : typeof obj.image1 === "string"
+          ? obj.image1
+          : null
+    ),
+    profile_image_two: normalizeMediaInput(
+      typeof obj.profile_image_two === "string"
+        ? obj.profile_image_two
+        : typeof obj.image2 === "string"
+          ? obj.image2
+          : null
+    ),
+  };
+}
+
+export function loginProfileCacheFromResponse(
+  login: LoginResponse
+): LoginProfileCache | null {
+  const cache: LoginProfileCache = {
+    profile_image: login.profile_image ?? null,
+    image1: login.profile_image_one ?? null,
+    image2: login.profile_image_two ?? null,
+    gender: login.gender,
+    full_name: login.full_name,
+  };
+  if (
+    !cache.profile_image &&
+    !cache.image1 &&
+    !cache.image2 &&
+    !cache.gender &&
+    !cache.full_name
+  ) {
+    return null;
+  }
+  return cache;
+}
+
+export function storeLoginProfileCache(cache: LoginProfileCache): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOGIN_PROFILE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // ignore quota
+  }
+}
+
+export function getLoginProfileCache(): LoginProfileCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LOGIN_PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LoginProfileCache;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      profile_image: parsed.profile_image ?? null,
+      image1: parsed.image1 ?? null,
+      image2: parsed.image2 ?? null,
+      gender: parsed.gender,
+      full_name: parsed.full_name,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function profileImageUrlsFromCache(
+  cache: LoginProfileCache | null | undefined
+): [string | null, string | null, string | null] {
+  if (!cache) return [null, null, null];
+  return [cache.profile_image, cache.image1, cache.image2];
 }
 
 /** Backend returns 400 with a token when credentials are valid but profile is incomplete. */
@@ -983,20 +1110,24 @@ export type InterpretedLogin =
 
 /** Normalize 200 logins and 400 incomplete-profile logins (token in body). */
 export function interpretLoginResponse(res: ApiResult<LoginResponse>): InterpretedLogin {
-  if (res.ok && res.data?.token) {
-    return {
-      ok: true,
-      data: res.data,
-      needsProfile: res.data.profile_completed === false,
-    };
+  if (res.ok && res.data) {
+    const data = normalizeLoginResponse(res.data) ?? (res.data as LoginResponse);
+    if (data.token) {
+      return {
+        ok: true,
+        data,
+        needsProfile: data.profile_completed === false,
+      };
+    }
   }
 
   const token = parseIncompleteLoginToken(res.data);
   if (token && isProfileIncompleteLogin(res.data)) {
     const userId = decodeUserIdFromToken(token) ?? 0;
+    const partial = normalizeLoginResponse(res.data);
     return {
       ok: true,
-      data: {
+      data: partial ?? {
         token,
         user_id: userId,
         message: extractError(res.data, "Please complete your profile."),
@@ -1023,12 +1154,15 @@ export function persistLoginSession(
   setSession(loginData.token, {
     userId: loginData.user_id,
     fullName: loginData.full_name ?? extras?.fullName,
-    phone,
+    phone: loginData.phone ?? phone,
     dateOfBirth: loginData.date_of_birth ?? extras?.dateOfBirth,
     profileCompleted: loginData.profile_completed,
     hashedUserId: hash ?? extras?.hashedUserId,
   });
   if (hash) storeHashedUserId(hash);
+
+  const cache = loginProfileCacheFromResponse(loginData);
+  if (cache) storeLoginProfileCache(cache);
 }
 
 export interface ProfileCard {
@@ -1533,14 +1667,27 @@ export function normalizeSingleProfile(raw: Record<string, unknown>): SingleProf
     name: String(raw.name ?? raw.full_name ?? ""),
     date_of_birth: dateOfBirth,
     about_me: String(raw.about_me ?? ""),
-    profile_image:
+    profile_image: normalizeMediaInput(
       typeof raw.profile_image === "string"
         ? raw.profile_image
         : typeof raw.profile_photo === "string"
           ? raw.profile_photo
-          : null,
-    image1: typeof raw.image1 === "string" ? raw.image1 : null,
-    image2: typeof raw.image2 === "string" ? raw.image2 : null,
+          : null
+    ),
+    image1: normalizeMediaInput(
+      typeof raw.image1 === "string"
+        ? raw.image1
+        : typeof raw.profile_image_one === "string"
+          ? raw.profile_image_one
+          : null
+    ),
+    image2: normalizeMediaInput(
+      typeof raw.image2 === "string"
+        ? raw.image2
+        : typeof raw.profile_image_two === "string"
+          ? raw.profile_image_two
+          : null
+    ),
     location: String(raw.location ?? ""),
     religion: raw.religion != null ? String(raw.religion) : null,
     gender: String(raw.gender ?? ""),

@@ -14,6 +14,17 @@ export function emptyPhotoSlot(): ProfilePhotoSlot {
   return { url: null, preview: null, pendingBlob: null, removed: false };
 }
 
+export function photoSlotsFromUrls(
+  urls: [string | null, string | null, string | null]
+): ProfilePhotoSlot[] {
+  return urls.map((url) => ({
+    url,
+    preview: null,
+    pendingBlob: null,
+    removed: false,
+  }));
+}
+
 function slotDisplaySrc(slot: ProfilePhotoSlot): string | null {
   if (slot.removed) return null;
   return slot.preview ?? slot.url;
