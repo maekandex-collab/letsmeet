@@ -3,8 +3,8 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useVideoCall } from "@/lib/useVideoCall";
+import { useEffect, useRef, useState } from "react";
+import { useActiveCall } from "@/lib/ActiveCallContext";
 import {
   findMatchByRoomId,
   parseNumericRoomId,
@@ -27,10 +27,35 @@ function VideoCallContent() {
   const segment = String(params.roomId ?? "").trim();
   const roomId = segment ? (parseNumericRoomId(segment) ?? segment) : null;
   const acceptIncoming = searchParams.get("accept") === "1";
-  const audioOnly = searchParams.get("audio") === "1";
-  const [name, setName] = useState(audioOnly ? "Audio call" : "Video call");
-  const [photo, setPhoto] = useState<string | null>(null);
+  const audioOnlyParam = searchParams.get("audio") === "1";
 
+  const [name, setName] = useState(audioOnlyParam ? "Audio call" : "Video call");
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [swapped, setSwapped] = useState(false);
+
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+
+  const {
+    status,
+    inCall,
+    incomingCall,
+    isMuted,
+    isCameraOff,
+    callSeconds,
+    audioOnly,
+    localStream,
+    remoteStream,
+    roomId: activeRoomId,
+    startCall,
+    acceptCall,
+    declineCall,
+    endCall,
+    toggleMute,
+    toggleCamera,
+  } = useActiveCall();
+
+  // Resolve peer name/photo
   useEffect(() => {
     if (roomId == null) return;
     const peer = readChatPeer();
@@ -47,29 +72,53 @@ function VideoCallContent() {
         setPhoto(match.profile_photo);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [roomId]);
 
-  const backHref = roomId != null ? `/chat/${roomId}` : "/messages";
+  // Initiate call when page mounts (if not already in call for this room)
+  useEffect(() => {
+    if (roomId == null) return;
+    if (activeRoomId === roomId && inCall) return; // Already connected to this room
+    if (activeRoomId === roomId) return; // Already connecting
 
-  const {
-    status,
-    inCall,
-    incomingCall,
-    isMuted,
-    isCameraOff,
-    callSeconds,
-    localVideoRef,
-    remoteVideoRef,
-    startCall,
-    acceptCall,
-    declineCall,
-    endCall,
-    toggleMute,
-    toggleCamera,
-  } = useVideoCall(roomId, { acceptIncoming, audioOnly });
+    startCall(roomId, {
+      audioOnly: audioOnlyParam,
+      acceptIncoming,
+      peerName: name,
+      peerPhoto: photo,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
+
+  // Update peer info in context when resolved
+  useEffect(() => {
+    // We don't need to update context peer info from here since
+    // it was passed during startCall. If name resolves later, just display locally.
+  }, [name, photo]);
+
+  // Attach local stream to video element
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream, swapped]);
+
+  // Attach remote stream to video element
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      void remoteVideoRef.current.play().catch(() => {});
+    }
+  }, [remoteStream, swapped]);
+
+  // Exit PiP when returning to call page (we're showing it fullscreen now)
+  useEffect(() => {
+    if (document.pictureInPictureElement) {
+      void document.exitPictureInPicture().catch(() => {});
+    }
+  }, []);
+
+  const backHref = roomId != null ? `/chat/${roomId}` : "/messages";
 
   return (
     <div className="mobile-shell flex flex-col min-h-dvh bg-dark relative overflow-hidden">
@@ -78,7 +127,12 @@ function VideoCallContent() {
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          className="absolute inset-0 w-full h-full object-cover bg-[#1a2030]"
+          onClick={() => swapped && setSwapped(false)}
+          className={
+            swapped
+              ? "absolute top-20 right-4 w-28 h-40 rounded-2xl object-cover bg-[#2a2a40] border-2 border-white/20 shadow-card z-10 cursor-pointer"
+              : "absolute inset-0 w-full h-full object-cover bg-[#1a2030]"
+          }
         />
       )}
 
@@ -86,7 +140,6 @@ function VideoCallContent() {
         <div className="absolute inset-0 bg-gradient-to-b from-primary/20 via-[#1a2030] to-[#1a2030]" />
       )}
 
-      {/* Hidden remote audio sink for audio-only calls */}
       {audioOnly && (
         <video ref={remoteVideoRef} autoPlay playsInline className="sr-only" />
       )}
@@ -105,14 +158,6 @@ function VideoCallContent() {
           )}
           <p className="text-white font-bold text-lg mb-1">{name}</p>
           <p className="text-white/60 text-sm mb-6">{status}</p>
-          {roomId != null && !acceptIncoming && (
-            <button
-              onClick={() => void startCall()}
-              className="btn-primary px-8"
-            >
-              {audioOnly ? "Start audio call" : "Start call"}
-            </button>
-          )}
           <p className="text-white/40 text-xs mt-6">{CALL_LIMIT_NOTICE}</p>
         </div>
       )}
@@ -123,6 +168,7 @@ function VideoCallContent() {
           photo={photo}
           onAccept={() => void acceptCall()}
           onDecline={declineCall}
+          audioOnly={audioOnly}
         />
       )}
 
@@ -132,7 +178,12 @@ function VideoCallContent() {
           autoPlay
           muted
           playsInline
-          className="absolute top-20 right-4 w-28 h-40 rounded-2xl object-cover bg-[#2a2a40] border-2 border-white/20 shadow-card z-10"
+          onClick={() => !swapped && setSwapped(true)}
+          className={
+            swapped
+              ? "absolute inset-0 w-full h-full object-cover bg-[#1a2030]"
+              : "absolute top-20 right-4 w-28 h-40 rounded-2xl object-cover bg-[#2a2a40] border-2 border-white/20 shadow-card z-10 cursor-pointer"
+          }
         />
       )}
 
@@ -147,7 +198,6 @@ function VideoCallContent() {
       <div className="relative z-10 flex items-center justify-between px-5 pt-14 pb-4">
         <Link
           href={backHref}
-          onClick={endCall}
           className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -218,27 +268,29 @@ function VideoCallContent() {
             </span>
           </div>
 
-          <div className="flex flex-col items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              endCall();
-              window.location.href = backHref;
-            }}
-            className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-card"
-            title="End call"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
-                fill="white"
-              />
-            </svg>
-          </button>
-            <span className="text-white/70 text-[11px]">End</span>
-          </div>
+          {inCall && (
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  endCall();
+                  window.location.href = backHref;
+                }}
+                className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-card"
+                title="End call"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
+                    fill="white"
+                  />
+                </svg>
+              </button>
+              <span className="text-white/70 text-[11px]">End</span>
+            </div>
+          )}
 
-          {!audioOnly && (
+          {inCall && !audioOnly && (
             <div className="flex flex-col items-center gap-1.5">
               <button
                 type="button"

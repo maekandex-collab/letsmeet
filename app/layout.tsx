@@ -3,6 +3,8 @@ import "./globals.css";
 import RouteLoader from "@/components/RouteLoader";
 import GlobalIncomingCall from "@/components/GlobalIncomingCall";
 import GlobalChatListener from "@/components/GlobalChatListener";
+import { ActiveCallProvider } from "@/lib/ActiveCallContext";
+import FloatingCallBar from "@/components/FloatingCallBar";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://letsmeet-sand.vercel.app";
@@ -80,10 +82,13 @@ export default function RootLayout({
         />
       </head>
       <body className="font-urbanist antialiased bg-white">
-        <RouteLoader />
-        <GlobalIncomingCall />
-        <GlobalChatListener />
-        {children}
+        <ActiveCallProvider>
+          <RouteLoader />
+          <GlobalIncomingCall />
+          <GlobalChatListener />
+          <FloatingCallBar />
+          {children}
+        </ActiveCallProvider>
       </body>
     </html>
   );

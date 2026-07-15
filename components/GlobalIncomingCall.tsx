@@ -18,6 +18,7 @@ import {
 interface ActiveIncomingCall {
   roomId: string;
   match: ProfileCard;
+  audioOnly?: boolean;
 }
 
 function vibrateIncoming() {
@@ -35,7 +36,7 @@ export default function GlobalIncomingCall() {
   const incomingRef = useRef<ActiveIncomingCall | null>(null);
   incomingRef.current = incoming;
 
-  const handleRing = useCallback((roomId: string, offer?: RTCSessionDescriptionInit) => {
+  const handleRing = useCallback((roomId: string, offer?: RTCSessionDescriptionInit, audioOnly?: boolean) => {
     if (offer) stashPendingCallOffer(roomId, offer);
 
     const match = matchByRoomRef.current.get(roomId);
@@ -46,7 +47,7 @@ export default function GlobalIncomingCall() {
     const current = incomingRef.current;
     if (current?.roomId === roomId) return;
 
-    setIncoming({ roomId, match });
+    setIncoming({ roomId, match, audioOnly });
     vibrateIncoming();
   }, [pathname]);
 
@@ -75,16 +76,20 @@ export default function GlobalIncomingCall() {
 
         const ws = new WebSocket(callWsUrl(roomId));
         ws.onmessage = (event) => {
-          let data: { type?: string; offer?: RTCSessionDescriptionInit };
+          let data: { type?: string; offer?: RTCSessionDescriptionInit; audioOnly?: boolean };
           try {
             data = JSON.parse(event.data);
           } catch {
             return;
           }
           if (data.type === "ring") {
-            handleRing(roomId);
+            handleRing(roomId, undefined, data.audioOnly);
           } else if (data.type === "offer" && data.offer) {
-            handleRing(roomId, data.offer);
+            handleRing(roomId, data.offer, data.audioOnly);
+          } else if (data.type === "hangup") {
+            if (incomingRef.current?.roomId === roomId) {
+              setIncoming(null);
+            }
           }
         };
         socketsRef.current.set(roomId, ws);
@@ -136,7 +141,8 @@ export default function GlobalIncomingCall() {
     if (!incoming) return;
     stashChatPeer(incoming.match);
     markCallAccepted(incoming.roomId);
-    const href = `${buildVideoCallHref(incoming.roomId)}?accept=1`;
+    const audioParam = incoming.audioOnly ? "&audio=1" : "";
+    const href = `${buildVideoCallHref(incoming.roomId)}?accept=1${audioParam}`;
     setIncoming(null);
     router.push(href);
   }, [incoming, router]);
@@ -149,6 +155,7 @@ export default function GlobalIncomingCall() {
       photo={incoming.match.profile_photo}
       onAccept={accept}
       onDecline={decline}
+      audioOnly={incoming.audioOnly}
     />
   );
 }

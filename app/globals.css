@@ -88,6 +88,12 @@ input[type=number]::-webkit-inner-spin-button {
   100% { transform: translateY(-115vh) rotate(40deg) scale(var(--s, 1)); opacity: 0; }
 }
 
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slideDown { animation: slideDown 0.3s ease-out both; }
+
 .animate-splash-blob { animation: splashBlob 12s ease-in-out infinite; }
 .animate-splash-logo-in { animation: splashLogoIn 0.9s cubic-bezier(0.22,1,0.36,1) both; }
 .animate-splash-glow { animation: splashGlow 2.8s ease-in-out infinite; }
