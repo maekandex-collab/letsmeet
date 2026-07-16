@@ -82,3 +82,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 export async function POST(req: NextRequest, { params }: RouteContext) {
   return forward(req, params.path);
 }
+
+export async function PUT(req: NextRequest, { params }: RouteContext) {
+  return forward(req, params.path);
+}

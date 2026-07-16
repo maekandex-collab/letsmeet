@@ -186,54 +186,58 @@ export default function ProfilePhotoEditor({
       </div>
 
       {viewIndex != null && viewSrc && (
-        <>
+        <div
+          className="fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center p-5"
+          onClick={() => setViewIndex(null)}
+        >
           <div
-            className="fixed inset-0 bg-black/80 z-[60]"
-            onClick={() => setViewIndex(null)}
-          />
-          <div className="fixed inset-0 z-[61] flex flex-col items-center justify-center p-5 pointer-events-none">
-            <div className="relative w-full max-w-[360px] pointer-events-auto">
+            className="relative w-full max-w-[360px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setViewIndex(null)}
+              className="absolute -top-12 right-0 text-white text-sm font-semibold px-3 py-1.5 rounded-full bg-white/15"
+            >
+              Close
+            </button>
+            <div className="rounded-3xl overflow-hidden bg-black shadow-2xl">
+              {slots[viewIndex].preview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={slots[viewIndex].preview!} alt={labels[viewIndex]} className="w-full max-h-[70dvh] object-contain" />
+              ) : (
+                <ProfilePhoto photo={slots[viewIndex].url} alt={labels[viewIndex]} priority />
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
               <button
                 type="button"
-                onClick={() => setViewIndex(null)}
-                className="absolute -top-12 right-0 text-white text-sm font-semibold px-3 py-1.5 rounded-full bg-white/15"
+                onClick={() => {
+                  const input = fileRefs[viewIndex].current;
+                  if (input) {
+                    input.click();
+                  }
+                  setTimeout(() => setViewIndex(null), 100);
+                }}
+                className="btn-primary flex-1 text-sm py-2.5"
               >
-                Close
+                Replace photo
               </button>
-              <div className="rounded-3xl overflow-hidden bg-black shadow-2xl">
-                {slots[viewIndex].preview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={slots[viewIndex].preview!} alt={labels[viewIndex]} className="w-full max-h-[70dvh] object-contain" />
-                ) : (
-                  <ProfilePhoto photo={slots[viewIndex].url} alt={labels[viewIndex]} priority />
-                )}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    fileRefs[viewIndex].current?.click();
-                    setViewIndex(null);
-                  }}
-                  className="btn-primary flex-1 text-sm py-2.5"
-                >
-                  Replace photo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    removeSlot(viewIndex);
-                    setViewIndex(null);
-                  }}
-                  className="btn-secondary flex-1 text-sm py-2.5 text-red-600 border-red-200"
-                >
-                  Delete
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  removeSlot(viewIndex);
+                  setViewIndex(null);
+                }}
+                className="btn-secondary flex-1 text-sm py-2.5 text-red-600 border-red-200"
+              >
+                Delete
+              </button>
             </div>
           </div>
-        </>
+        </div>
       )}
+
     </>
   );
 }

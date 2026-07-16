@@ -24,13 +24,15 @@ export default function SignInPage() {
     try {
       const login = await loginUser(number, pin);
       const result = interpretLoginResponse(login);
+      console.log("result", result)
+
       if (!result.ok) {
         setError(result.message);
         return;
       }
       resetDiscoverLocalState();
       persistLoginSession(result.data, number);
-      router.push(result.needsProfile ? "/setup" : "/home");
+      router.push(result.data?.profile_completed ? "/home" : "/setup"); 
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {

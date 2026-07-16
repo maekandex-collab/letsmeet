@@ -23,6 +23,7 @@ import {
   profileImageUrlsFromDraft,
   storeLoginProfileCache,
   saveAccountProfile,
+  clearMediaCache,
 } from "@/lib/letsmeet";
 
 const SETTINGS = [
@@ -109,6 +110,7 @@ export default function AccountPage() {
   const [phone, setPhone] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState("");
+  const [isEditingGender, setIsEditingGender] = useState(false);
   const [photos, setPhotos] = useState<ProfilePhotoSlot[]>([
     emptyPhotoSlot(),
     emptyPhotoSlot(),
@@ -136,7 +138,7 @@ export default function AccountPage() {
     const draft = getLocalProfileDraft();
     if (draft) {
       if (draft.full_name) setName(draft.full_name);
-      if (draft.gender) setGender(draft.gender);
+      if (draft.gender) setGender(draft.gender.toLowerCase());
       if (draft.about_me) setAboutMe(draft.about_me);
       if (draft.location) setLocation(draft.location);
       if (draft.interests) setInterests(draft.interests);
@@ -152,7 +154,10 @@ export default function AccountPage() {
     const cache = getLoginProfileCache();
     if (!cache) return;
     if (cache.full_name) setName((prev) => prev || cache.full_name || "");
-    if (cache.gender) setGender((prev) => prev || cache.gender || "");
+    if (cache.gender) {
+      const g = cache.gender.toLowerCase();
+      setGender((prev) => prev || g || "");
+    }
     applyProfilePhotos(profileImageUrlsFromCache(cache));
   }, []);
 
@@ -194,7 +199,7 @@ export default function AccountPage() {
       if (result.profile) {
         const p = result.profile;
         if (p.name) setName(p.name);
-        if (p.gender) setGender(p.gender);
+        if (p.gender) setGender(p.gender.toLowerCase());
         if (p.about_me) setAboutMe(p.about_me);
         if (p.location) setLocation(p.location);
         if (p.interests) setInterests(p.interests);
@@ -267,6 +272,8 @@ export default function AccountPage() {
         return;
       }
 
+      setIsEditingGender(false);
+
       if (result.localOnly) {
         setSuccess("Saved on this device.");
         setLocalOnlyNotice(
@@ -280,11 +287,24 @@ export default function AccountPage() {
       const refreshed = await fetchMyProfile();
       if (refreshed.profile) {
         const p = refreshed.profile;
-        applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
+        if (p.gender) setGender(p.gender.toLowerCase());
+        
+        clearMediaCache(p.profile_image);
+        clearMediaCache(p.image1);
+        clearMediaCache(p.image2);
+
+        const ts = Date.now();
+        const addTs = (url: string | null) => (url ? `${url.split("?")[0]}?t=${ts}` : null);
+        
+        const mainPhoto = addTs(p.profile_image);
+        const image1 = addTs(p.image1 ?? null);
+        const image2 = addTs(p.image2 ?? null);
+
+        applyProfilePhotos([mainPhoto, image1, image2]);
         storeLoginProfileCache({
-          profile_image: p.profile_image,
-          image1: p.image1 ?? null,
-          image2: p.image2 ?? null,
+          profile_image: mainPhoto,
+          image1: image1,
+          image2: image2,
           gender: p.gender,
           full_name: p.name,
         });
@@ -411,25 +431,43 @@ export default function AccountPage() {
               {/* Gender */}
               <div>
                 <label className="text-xs font-bold text-dark uppercase tracking-wider mb-1.5 block">Gender</label>
-                <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-4 py-3.5">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <circle cx="11" cy="11" r="5" stroke="#616568" strokeWidth="2"/>
-                    <path d="M15.5 6.5L20 2M20 2h-4M20 2v4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                    <path d="M11 16v4M9 18h4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className="flex-1 bg-transparent text-sm font-medium text-dark outline-none appearance-none"
-                  >
-                    <option value="" disabled>Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <path d="M6 9l6 6 6-6" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                <div className="flex items-center justify-between bg-[#F5F5F5] rounded-2xl px-4 py-3.5">
+                  <div className="flex items-center gap-3 flex-1">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                      <circle cx="11" cy="11" r="5" stroke="#616568" strokeWidth="2"/>
+                      <path d="M15.5 6.5L20 2M20 2h-4M20 2v4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
+                      <path d="M11 16v4M9 18h4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    {isEditingGender ? (
+                      <select
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value)}
+                        className="flex-1 bg-transparent text-sm font-medium text-dark outline-none appearance-none cursor-pointer"
+                      >
+                        <option value="" disabled>Select Gender</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                      </select>
+                    ) : (
+                      <span className="text-sm font-medium text-dark">
+                        {gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—"}
+                      </span>
+                    )}
+                  </div>
+                  {isEditingGender ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                      <path d="M6 9l6 6 6-6" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingGender(true)}
+                      className="text-xs font-bold text-primary hover:text-primary-dark transition-colors px-2 py-1"
+                    >
+                      Edit
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

@@ -18,7 +18,7 @@ export default function DiscoverEmptyState({
   let description =
     "Check back later for new people, or invite friends to grow the community.";
 
-  if (reason === "incomplete_profile") {
+  if (reason === "incomplete_profile") { 
     title = "Finish your profile";
     description =
       "Your profile isn't live on Discover yet. Complete setup so others can find you and you can start matching.";

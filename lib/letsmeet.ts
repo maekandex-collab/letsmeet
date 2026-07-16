@@ -235,6 +235,10 @@ export function normalizeMediaInput(path?: string | null): string | null {
   const value = path?.trim();
   if (!value) return null;
 
+  if (value.startsWith("data:") || value.startsWith("blob:")) {
+    return value;
+  }
+
   const lower = value.toLowerCase();
   if (lower === "null" || lower === "undefined" || lower === "none" || lower === "string") {
     return null;
@@ -302,6 +306,10 @@ export function mediaUrl(path?: string | null): string | null {
   const cleanPath = normalizeMediaInput(path);
   if (!cleanPath) return null;
 
+  if (cleanPath.startsWith("data:") || cleanPath.startsWith("blob:")) {
+    return cleanPath;
+  }
+
   if (cleanPath.startsWith("//")) {
     return `${MEDIA_PROXY}?url=${encodeURIComponent(normalizeMediaInput(`http:${cleanPath}`) ?? cleanPath)}`;
   }
@@ -313,7 +321,11 @@ export function mediaUrl(path?: string | null): string | null {
 /** Public CDN URL (bypasses Next proxy). Works in `<img>` without CORS issues. */
 export function directMediaUrl(path?: string | null): string | null {
   const cleanPath = normalizeMediaInput(path);
-  if (!cleanPath || cleanPath.startsWith("http")) return null;
+  if (!cleanPath) return null;
+  if (cleanPath.startsWith("data:") || cleanPath.startsWith("blob:")) {
+    return cleanPath;
+  }
+  if (cleanPath.startsWith("http")) return null;
   return `${MEDIA_BASE}${cleanPath}`;
 }
 
@@ -327,6 +339,11 @@ function mediaCacheKey(path?: string | null): string | null {
 
 /** URLs for <img src> — direct CDN first (fast in browser), then same-origin proxy. */
 export function displayMediaCandidates(path?: string | null): string[] {
+  const cleanPath = normalizeMediaInput(path);
+  if (cleanPath && (cleanPath.startsWith("data:") || cleanPath.startsWith("blob:"))) {
+    return [cleanPath];
+  }
+
   if (typeof window !== "undefined") {
     const key = mediaCacheKey(path);
     const blob = key ? clientMediaBlobs.get(key) : undefined;
@@ -364,10 +381,29 @@ export function getClientMediaUrl(path?: string | null): string | null {
   return mediaUrl(path);
 }
 
+export function clearMediaCache(path?: string | null): void {
+  if (typeof window === "undefined") return;
+  const key = mediaCacheKey(path);
+  if (!key) return;
+  const objUrl = clientMediaBlobs.get(key);
+  if (objUrl) {
+    try {
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      // ignore
+    }
+    clientMediaBlobs.delete(key);
+  }
+}
+
+
 export async function warmMediaBlob(path?: string | null): Promise<string | null> {
   if (typeof window === "undefined") return null;
   const key = mediaCacheKey(path);
   if (!key) return null;
+  if (key.startsWith("data:") || key.startsWith("blob:")) {
+    return key;
+  }
 
   const existing = clientMediaBlobs.get(key);
   if (existing) return existing;
@@ -1578,7 +1614,10 @@ export type DiscoverFeedResult = {
 /** True when the backend has a usable profile (name, gender, photo). */
 export async function verifyProfileOnBackend(): Promise<boolean> {
   const result = await fetchMyProfile();
-  if (!result.ok || !result.profile) return false;
+  if (!result.ok || !result.profile) {
+    const user = getUser();
+    return user?.profileCompleted ?? false;
+  }
   const p = result.profile;
   return Boolean(
     p.name?.trim() && p.gender?.trim() && p.profile_image?.trim()
@@ -1786,7 +1825,7 @@ export function markNotificationRead(id: number) {
 export function getSingleProfile(userId: string) {
   return request<{ profile: SingleProfile }>(
     `/single/user/profile?user_id=${encodeURIComponent(userId)}`,
-    { auth: true }
+    { method: "PUT", auth: true }
   );
 }
 
