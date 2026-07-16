@@ -235,8 +235,13 @@ export function normalizeMediaInput(path?: string | null): string | null {
   const value = path?.trim();
   if (!value) return null;
 
-  if (value.startsWith("data:") || value.startsWith("blob:")) {
-    return value;
+  const dataIdx = value.indexOf("data:image/");
+  if (dataIdx !== -1) {
+    return value.slice(dataIdx);
+  }
+  const blobIdx = value.indexOf("blob:");
+  if (blobIdx !== -1) {
+    return value.slice(blobIdx);
   }
 
   const lower = value.toLowerCase();

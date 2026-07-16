@@ -98,12 +98,14 @@ export function useMediaDisplay(photo?: string | null) {
 
   useEffect(() => {
     if (!src || loaded || failed) return;
+    if (src.startsWith("data:") || src.startsWith("blob:")) return;
     const timer = window.setTimeout(() => tryNext(), LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [src, loaded, failed, tryNext]);
 
   useEffect(() => {
     if (!src || loaded || failed) return;
+    if (src.startsWith("data:") || src.startsWith("blob:")) return;
     const elapsed = Date.now() - loadStartedRef.current;
     const remaining = Math.max(0, MAX_LOAD_MS - elapsed);
     const timer = window.setTimeout(() => setFailed(true), remaining);

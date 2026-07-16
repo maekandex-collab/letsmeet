@@ -106,7 +106,7 @@ export default function ProfilePhotoEditor({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={slot.preview} alt={labels[index]} className="w-full h-full object-cover" />
                       ) : (
-                        <ProfilePhoto photo={slot.url} alt={labels[index]} priority={isMain} />
+                        <ProfilePhoto photo={slot.url} alt={labels[index]} priority={true} />
                       )}
                     </button>
                   ) : (
@@ -201,10 +201,10 @@ export default function ProfilePhotoEditor({
             >
               Close
             </button>
-            <div className="rounded-3xl overflow-hidden bg-black shadow-2xl">
+            <div className="relative w-full aspect-[3/4] rounded-3xl overflow-hidden bg-black shadow-2xl">
               {slots[viewIndex].preview ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={slots[viewIndex].preview!} alt={labels[viewIndex]} className="w-full max-h-[70dvh] object-contain" />
+                <img src={slots[viewIndex].preview!} alt={labels[viewIndex]} className="absolute inset-0 w-full h-full object-contain" />
               ) : (
                 <ProfilePhoto photo={slots[viewIndex].url} alt={labels[viewIndex]} priority />
               )}
