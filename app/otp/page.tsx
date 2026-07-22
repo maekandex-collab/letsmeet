@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BackHeader } from "@/components/Header";
-import { forgetPassword, extractError } from "@/lib/letsmeet";
+import { forgetPassword, extractError, verifyForgotPasswordOTP } from "@/lib/letsmeet";
 
 function OtpContent() {
   const router = useRouter();
@@ -21,9 +21,19 @@ function OtpContent() {
   });
 
   useEffect(() => {
-    // Focus first input on mount
-    inputs.current[0]?.focus();
-  }, []);
+    const otpParam = searchParams.get("otp") || searchParams.get("code") || "";
+    if (otpParam && otpParam.length === 6) {
+      const digits = otpParam.split("").slice(0, 6);
+      setCode(digits);
+      // Focus the last input box
+      setTimeout(() => {
+        inputs.current[5]?.focus();
+      }, 50);
+    } else {
+      // Focus first input on mount
+      inputs.current[0]?.focus();
+    }
+  }, [searchParams]);
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ show: true, message, type });
@@ -96,21 +106,38 @@ function OtpContent() {
       setResending(false);
     }
   };
+const handleVerify = async () => {
+  const codeString = code.join("");
 
-  const handleVerify = () => {
-    const codeString = code.join("");
-    if (codeString.length < 6) {
-      showToast("Please enter the complete 6-digit code.", "error");
-      return;
-    }
+  if (codeString.length < 6) {
+    showToast("Please enter the complete 6-digit code.", "error");
+    return;
+  }
 
+  try {
     setLoading(true);
-    // Redirect to reset password page with phone and code query parameters
-    setTimeout(() => {
-      router.push(`/reset-password?phone=${encodeURIComponent(phone)}&code=${encodeURIComponent(codeString)}`);
-      setLoading(false);
-    }, 800);
-  };
+
+    const res = await verifyForgotPasswordOTP(phone, codeString);
+
+    if (res.ok) {
+      setToast({ show: true, message: "OTP verification successful!", type: "success" })
+      router.push(
+        `/reset-password?phone=${encodeURIComponent(
+          phone
+        )}`
+      );
+    } else {
+      showToast(
+        extractError(res.data, "Invalid verification code."),
+        "error"
+      );
+    }
+  } catch {
+    showToast("Something went wrong.", "error");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const maskPhoneNumber = (num: string) => {
     if (!num) return "";

@@ -163,7 +163,7 @@ export default function HomePage() {
             </svg>
           </Link>
         }
-      />
+      />   
 
       <div className="flex flex-col px-3 sm:px-4 pt-header pb-bottom-nav h-dvh">
         <div className="flex items-center justify-between mb-3">

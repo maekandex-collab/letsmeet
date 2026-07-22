@@ -1439,6 +1439,13 @@ export function forgetPassword(phone_number: string) {
   });
 }
 
+export function verifyForgotPasswordOTP(phone_number: string, pin: string) {
+  return request<LoginResponse>("/reset/password/", { 
+    method: "POST",
+    body: { phone_number, pin},
+  });
+}
+
 export function uploadProfile(fields: ProfileUploadFields) {
   const form = new FormData();
   form.append("sexual_orientation", fields.sexual_orientation);
@@ -2081,8 +2088,12 @@ export function resetPassword(phone_number: string, pin: string) {
 }
 
 export function updatePassword(number: string, pin: string, confirm_pin: string) {
-  return request<unknown>("/update/password/", {
-    method: "POST",
-    body: { number, pin, confirm_pin },
-  });
+  try {
+    return request<unknown>("/update/password/", {
+      method: "POST",
+      body: { number, pin, confirm_pin },
+    });
+  } catch (error) {
+    console.log(error)
+  }
 }

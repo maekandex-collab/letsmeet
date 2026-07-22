@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import { useState } from "react";
-import { forgetPassword, extractError } from "@/lib/letsmeet";
+import { forgetPassword, extractError, normalizePhone } from "@/lib/letsmeet";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -20,14 +20,16 @@ export default function ForgotPasswordPage() {
   const handleForgetPassword = async () => {
     try {
       setLoading(true)
-      const response = await forgetPassword(phoneNumber)
+      const normalizedPhone = normalizePhone(phoneNumber)
+      const response = await forgetPassword(normalizedPhone)
       const data = response.data;
+      console.log("response", data)
       if (response.ok) {
         const msg = extractError(data, "Reset OTP code sent successfully!");
         setMessage(msg)
         setToast({ show: true, message: msg, type: "success" })
         setTimeout(() => {
-          router.push(`/reset-password?phone=${encodeURIComponent(phoneNumber)}`)
+          router.push(`/otp?phone=${encodeURIComponent(normalizedPhone)}`)
         }, 1500)
       } else {
         const errMsg = extractError(data, "Failed to request password reset.");
