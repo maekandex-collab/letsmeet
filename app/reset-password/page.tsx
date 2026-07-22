@@ -10,7 +10,6 @@ function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const phoneParam = searchParams.get("phone") || "";
-  const codeParam = searchParams.get("code") || searchParams.get("otp") || "";
 
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
