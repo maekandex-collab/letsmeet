@@ -15,7 +15,6 @@ import {
   isLoggedIn,
   fetchMyProfile,
   fetchMediaBlob,
-  updateUser,
   prefetchMedia,
   getLoginProfileCache,
   profileImageUrlsFromCache,
@@ -100,6 +99,56 @@ const SETTINGS = [
   },
 ];
 
+type BannerTone = "warning" | "error" | "success";
+
+const BANNER_STYLES: Record<BannerTone, string> = {
+  warning: "bg-amber-50 border-amber-200 text-amber-700",
+  error: "bg-red-50 border-red-200 text-red-600",
+  success: "bg-green-50 border-green-200 text-green-700",
+};
+
+function BannerIcon({ tone }: { tone: BannerTone }) {
+  if (tone === "success") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0 mt-0.5">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+        <path d="M8 12.5l2.5 2.5L16 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (tone === "error") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0 mt-0.5">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+        <path d="M12 8v5M12 16v.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0 mt-0.5">
+      <path d="M12 9v4M12 16.5v.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10.29 3.86L1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Banner({ tone, children }: { tone: BannerTone; children: React.ReactNode }) {
+  return (
+    <div className={`flex items-start gap-2 text-xs font-medium border rounded-2xl px-3.5 py-3 ${BANNER_STYLES[tone]}`}>
+      <BannerIcon tone={tone} />
+      <p className="leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+function FieldIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center shrink-0">
+      {children}
+    </span>
+  );
+}
+
 export default function AccountPage() {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -110,7 +159,6 @@ export default function AccountPage() {
   const [phone, setPhone] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState("");
-  const [isEditingGender, setIsEditingGender] = useState(false);
   const [photos, setPhotos] = useState<ProfilePhotoSlot[]>([
     emptyPhotoSlot(),
     emptyPhotoSlot(),
@@ -134,7 +182,13 @@ export default function AccountPage() {
     setPhotos(photoSlotsFromUrls(urls));
   }
 
-  const applyLoginCacheFallback = useCallback(() => {
+  /**
+   * Apply whatever profile data we already have locally (from the login
+   * response cache or an unsynced local draft) and report whether it's
+   * enough to consider the page "loaded" — i.e. gender + at least one
+   * photo, the only two fields this screen actually requires to function.
+   */
+  const applyLoginCacheFallback = useCallback((): boolean => {
     const draft = getLocalProfileDraft();
     if (draft) {
       if (draft.full_name) setName(draft.full_name);
@@ -144,21 +198,24 @@ export default function AccountPage() {
       if (draft.interests) setInterests(draft.interests);
       if (draft.sexual_orientation) setSexualOrientation(draft.sexual_orientation);
       if (draft.religion) setReligion(draft.religion);
-      applyProfilePhotos(profileImageUrlsFromDraft(draft));
+      const urls = profileImageUrlsFromDraft(draft);
+      applyProfilePhotos(urls);
       setLocalOnlyNotice(
         "Showing changes saved on this device. The server has not accepted profile edits yet."
       );
-      return;
+      return Boolean(draft.gender) && urls.some(Boolean);
     }
 
     const cache = getLoginProfileCache();
-    if (!cache) return;
+    if (!cache) return false;
     if (cache.full_name) setName((prev) => prev || cache.full_name || "");
     if (cache.gender) {
       const g = cache.gender.toLowerCase();
       setGender((prev) => prev || g || "");
     }
-    applyProfilePhotos(profileImageUrlsFromCache(cache));
+    const urls = profileImageUrlsFromCache(cache);
+    applyProfilePhotos(urls);
+    return Boolean(cache.gender) && urls.some(Boolean);
   }, []);
 
   async function photoUrlsForSave(
@@ -192,7 +249,7 @@ export default function AccountPage() {
       setDateOfBirth(user.dateOfBirth ?? "");
     }
 
-    applyLoginCacheFallback();
+    const hasEssentialsFromCache = applyLoginCacheFallback();
 
     (async () => {
       const result = await fetchMyProfile();
@@ -216,7 +273,12 @@ export default function AccountPage() {
         if (p.date_of_birth > 0 && p.date_of_birth < 120) {
           setProfileAge(p.date_of_birth);
         }
-      } else if (result.error) {
+      } else if (result.error && !hasEssentialsFromCache) {
+        // Only surface this when the page genuinely has nothing to show —
+        // if we already have gender + a photo from the login cache/local
+        // draft, the extra profile fetch (about-me/location/interests,
+        // fields this screen doesn't even display) failing isn't something
+        // the user needs to worry about.
         setNotice(result.error);
       }
       setLoading(false);
@@ -263,7 +325,7 @@ export default function AccountPage() {
         image1: image1Blob,
         image2: image2Blob,
         religion: religion ?? undefined,
-        fullName: name.trim() || undefined,
+        fullName: undefined,
         photoUrls,
       });
 
@@ -271,8 +333,6 @@ export default function AccountPage() {
         setError(result.error);
         return;
       }
-
-      setIsEditingGender(false);
 
       if (result.localOnly) {
         setSuccess("Saved on this device.");
@@ -282,8 +342,7 @@ export default function AccountPage() {
         return;
       }
 
-      if (name.trim()) updateUser({ fullName: name.trim() });
-      setSuccess("Profile updated successfully.");
+      setSuccess("Photos updated successfully.");
       const refreshed = await fetchMyProfile();
       if (refreshed.profile) {
         const p = refreshed.profile;
@@ -349,145 +408,159 @@ export default function AccountPage() {
 
       <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav px-5">
         {loading ? (
-          <div className="flex flex-col items-center pt-16 gap-4">
-            <div className="w-24 h-24 rounded-full bg-[#F5F5F5] animate-pulse" />
-            <div className="w-full h-12 rounded-2xl bg-[#F5F5F5] animate-pulse" />
-            <div className="w-full h-12 rounded-2xl bg-[#F5F5F5] animate-pulse" />
+          <div className="pt-6 space-y-4">
+            <div className="h-6 w-40 rounded-full bg-[#F5F5F5] animate-pulse" />
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="aspect-[3/4] rounded-2xl bg-[#F5F5F5] animate-pulse" />
+              <div className="aspect-[3/4] rounded-2xl bg-[#F5F5F5] animate-pulse" />
+              <div className="aspect-[3/4] rounded-2xl bg-[#F5F5F5] animate-pulse" />
+            </div>
+            <div className="w-full h-14 rounded-2xl bg-[#F5F5F5] animate-pulse" />
+            <div className="w-full h-14 rounded-2xl bg-[#F5F5F5] animate-pulse" />
+            <div className="w-full h-14 rounded-2xl bg-[#F5F5F5] animate-pulse" />
           </div>
         ) : (
           <>
-            <ProfilePhotoEditor slots={photos} onChange={setPhotos} />
-
-            {notice && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
-                {notice}
-                {!photos.some(slotHasPhoto) && " Add at least one photo below, then tap Save Changes."}
-              </p>
-            )}
-
-            <div className="space-y-5">
-              {/* Name */}
-              <div>
-                <label className="text-xs font-bold text-dark uppercase tracking-wider mb-1.5 block">Name</label>
-                <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-4 py-3.5">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <circle cx="12" cy="8" r="4" stroke="#616568" strokeWidth="2"/>
-                    <path d="M4 20C4 17.79 7.58 16 12 16C16.42 16 20 17.79 20 20" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your Name"
-                    className="flex-1 bg-transparent text-sm font-medium text-dark placeholder:text-muted outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Phone Number — read-only */}
-              <div>
-                <label className="text-xs font-bold text-dark uppercase tracking-wider mb-1.5 block">Phone Number</label>
-                <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-4 py-3.5 opacity-60">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72c.13.96.35 1.9.66 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.31 1.85.53 2.81.66A2 2 0 0 1 22 14.92z" stroke="#616568" strokeWidth="2" strokeLinejoin="round"/>
-                  </svg>
-                  <input
-                    type="tel"
-                    value={phone || "—"}
-                    readOnly
-                    className="flex-1 bg-transparent text-sm font-medium text-dark outline-none cursor-not-allowed"
-                  />
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <rect x="3" y="11" width="18" height="11" rx="2" stroke="#616568" strokeWidth="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </div>
-                <p className="text-[11px] text-muted mt-1 ml-1">Phone number cannot be changed</p>
-              </div>
-
-              {/* Birth Date */}
-              <div>
-                <label className="text-xs font-bold text-dark uppercase tracking-wider mb-1.5 block">Birth Date</label>
-                <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-4 py-3.5 opacity-60">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="#616568" strokeWidth="2"/>
-                    <path d="M16 2v4M8 2v4M3 10h18" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  <input
-                    type="date"
-                    value={dateOfBirth}
-                    readOnly
-                    className="flex-1 bg-transparent text-sm font-medium text-dark outline-none cursor-not-allowed"
-                  />
-                </div>
-                {!dateOfBirth && profileAge && (
-                  <p className="text-[11px] text-muted mt-1 ml-1">Age: {profileAge} (from profile)</p>
-                )}
-                {!dateOfBirth && !profileAge && (
-                  <p className="text-[11px] text-muted mt-1 ml-1">Set at sign-up — not editable here</p>
-                )}
-              </div>
-
-              {/* Gender */}
-              <div>
-                <label className="text-xs font-bold text-dark uppercase tracking-wider mb-1.5 block">Gender</label>
-                <div className="flex items-center justify-between bg-[#F5F5F5] rounded-2xl px-4 py-3.5">
-                  <div className="flex items-center gap-3 flex-1">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                      <circle cx="11" cy="11" r="5" stroke="#616568" strokeWidth="2"/>
-                      <path d="M15.5 6.5L20 2M20 2h-4M20 2v4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                      <path d="M11 16v4M9 18h4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                    {isEditingGender ? (
-                      <select
-                        value={gender}
-                        onChange={(e) => setGender(e.target.value)}
-                        className="flex-1 bg-transparent text-sm font-medium text-dark outline-none appearance-none cursor-pointer"
-                      >
-                        <option value="" disabled>Select Gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                      </select>
-                    ) : (
-                      <span className="text-sm font-medium text-dark">
-                        {gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—"}
-                      </span>
-                    )}
-                  </div>
-                  {isEditingGender ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                      <path d="M6 9l6 6 6-6" stroke="#616568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingGender(true)}
-                      className="text-xs font-bold text-primary hover:text-primary-dark transition-colors px-2 py-1"
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
-              </div>
+            <div className="pt-5 pb-1">
+              <h1 className="text-2xl font-bold text-dark">My Profile</h1>
+              <p className="text-sm text-muted mt-0.5">Update your photos — personal details are view only</p>
             </div>
 
-            {localOnlyNotice && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-4">
-                {localOnlyNotice}
-              </p>
+            <div className="mt-5">
+              <ProfilePhotoEditor slots={photos} onChange={setPhotos} />
+            </div>
+
+            {notice && (
+              <div className="mt-5">
+                <Banner tone="warning">
+                  {notice}
+                  {!photos.some(slotHasPhoto) && " Add at least one photo below, then tap Save Changes."}
+                </Banner>
+              </div>
             )}
 
-            {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
-            {success && <p className="text-sm text-green-600 mt-4">{success}</p>}
+            <div className="bg-white rounded-3xl shadow-card border border-border/60 p-4 sm:p-5 mt-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-bold text-dark uppercase tracking-wider">
+                  Personal Info
+                </h2>
+                <span className="text-[10px] font-semibold text-muted uppercase tracking-wide">
+                  View only
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {/* Name */}
+                <div>
+                  <label className="text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5 block">Name</label>
+                  <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-3.5 py-3 opacity-70">
+                    <FieldIcon>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                        <circle cx="12" cy="8" r="4" stroke="#616568" strokeWidth="2"/>
+                        <path d="M4 20C4 17.79 7.58 16 12 16C16.42 16 20 17.79 20 20" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    </FieldIcon>
+                    <input
+                      type="text"
+                      value={name || "—"}
+                      readOnly
+                      className="flex-1 bg-transparent text-sm font-semibold text-dark outline-none cursor-not-allowed"
+                    />
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 text-muted">
+                      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Phone Number */}
+                <div>
+                  <label className="text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5 block">Phone Number</label>
+                  <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-3.5 py-3 opacity-70">
+                    <FieldIcon>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72c.13.96.35 1.9.66 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.31 1.85.53 2.81.66A2 2 0 0 1 22 14.92z" stroke="#616568" strokeWidth="2" strokeLinejoin="round"/>
+                      </svg>
+                    </FieldIcon>
+                    <input
+                      type="tel"
+                      value={phone || "—"}
+                      readOnly
+                      className="flex-1 bg-transparent text-sm font-semibold text-dark outline-none cursor-not-allowed"
+                    />
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 text-muted">
+                      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Birth Date */}
+                <div>
+                  <label className="text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5 block">Birth Date</label>
+                  <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-3.5 py-3 opacity-70">
+                    <FieldIcon>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                        <rect x="3" y="4" width="18" height="18" rx="2" stroke="#616568" strokeWidth="2"/>
+                        <path d="M16 2v4M8 2v4M3 10h18" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    </FieldIcon>
+                    <input
+                      type="date"
+                      value={dateOfBirth}
+                      readOnly
+                      className="flex-1 bg-transparent text-sm font-semibold text-dark outline-none cursor-not-allowed"
+                    />
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 text-muted">
+                      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  {!dateOfBirth && profileAge && (
+                    <p className="text-[11px] text-muted mt-1.5 ml-1">Age: {profileAge} (from profile)</p>
+                  )}
+                </div>
+
+                {/* Gender */}
+                <div>
+                  <label className="text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5 block">Gender</label>
+                  <div className="flex items-center gap-3 bg-[#F5F5F5] rounded-2xl px-3.5 py-3 opacity-70">
+                    <FieldIcon>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                        <circle cx="11" cy="11" r="5" stroke="#616568" strokeWidth="2"/>
+                        <path d="M15.5 6.5L20 2M20 2h-4M20 2v4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M11 16v4M9 18h4" stroke="#616568" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    </FieldIcon>
+                    <span className="flex-1 text-sm font-semibold text-dark cursor-not-allowed">
+                      {gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—"}
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 text-muted">
+                      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted mt-4 text-center">
+                Personal details are set at sign-up and cannot be changed here.
+              </p>
+            </div>
+
+            <div className="space-y-3 mt-5">
+              {localOnlyNotice && <Banner tone="warning">{localOnlyNotice}</Banner>}
+              {error && <Banner tone="error">{error}</Banner>}
+              {success && <Banner tone="success">{success}</Banner>}
+            </div>
 
             <button
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="btn-primary w-full mt-8 disabled:opacity-50"
+              className="btn-primary w-full mt-6 shadow-card disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? "Saving photos..." : "Save Photos"}
             </button>
           </>
         )}

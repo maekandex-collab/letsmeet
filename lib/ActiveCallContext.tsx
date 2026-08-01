@@ -143,14 +143,26 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
 
   const initMedia = useCallback(async (isAudioOnly: boolean) => {
     if (localStreamRef.current) return localStreamRef.current;
-    const stream = await navigator.mediaDevices.getUserMedia(
-      isAudioOnly
-        ? { video: false, audio: true }
-        : { video: VIDEO_CAPTURE, audio: true }
-    );
-    localStreamRef.current = stream;
-    setLocalStream(stream);
-    return stream;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(
+        isAudioOnly
+          ? { video: false, audio: true }
+          : { video: VIDEO_CAPTURE, audio: true }
+      );
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      return stream;
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setStatus("Camera/mic permission denied");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setStatus("No camera/microphone found");
+      } else {
+        setStatus("Could not access camera/mic");
+      }
+      throw err;
+    }
   }, []);
 
   const attachRemoteToPip = useCallback((stream: MediaStream) => {
@@ -225,8 +237,13 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
         setStatus("Connecting…");
         setIncomingCall(false);
         pendingOfferRef.current = null;
-      } catch {
-        setStatus("Could not answer call");
+      } catch (err) {
+        // If getUserMedia already set a specific status (permission denied,
+        // no device found), keep that message instead of a generic one.
+        const name = err instanceof Error ? err.name : "";
+        if (name !== "NotAllowedError" && name !== "PermissionDeniedError" && name !== "NotFoundError" && name !== "DevicesNotFoundError") {
+          setStatus("Could not answer call");
+        }
       }
     },
     [createPeer]
@@ -393,8 +410,15 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
     async (id: string | number, opts?: { audioOnly?: boolean; acceptIncoming?: boolean; peerName?: string; peerPhoto?: string | null }) => {
       // If there's already an active call to the same room, skip
       if (inCallRef.current && roomIdRef.current === id) return;
-      // If there's a different active call, end it first
-      if (inCallRef.current) endCall();
+      // Any previous session for a *different* room must be fully torn down
+      // first — not just when `inCall` is true. A half-started call (ringing,
+      // not yet connected) can otherwise leave a stale RTCPeerConnection /
+      // WebSocket around, whose cached offer/localDescription then gets
+      // reused for the new room (see `sendOffer`), effectively routing the
+      // new call through the old session.
+      if (roomIdRef.current !== null && roomIdRef.current !== id) {
+        endCall();
+      }
 
       const isAudioOnly = opts?.audioOnly ?? false;
       audioOnlyRef.current = isAudioOnly;
@@ -422,7 +446,14 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
       if (acceptIncomingRef.current) return; // Will answer when offer arrives
 
       socketRef.current?.send(JSON.stringify({ type: "ring", audioOnly: isAudioOnly }));
-      await sendOffer();
+      try {
+        await sendOffer();
+      } catch {
+        // initMedia already set a specific status (permission denied, no
+        // device, etc); don't start the retry loop, it would just keep
+        // re-prompting for a permission that already failed.
+        return;
+      }
       setStatus("Calling…");
 
       stopRetry();
@@ -431,7 +462,11 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
           const open = socketRef.current?.readyState === WebSocket.OPEN;
           if (!open || inCallRef.current) return;
           socketRef.current?.send(JSON.stringify({ type: "ring", audioOnly: audioOnlyRef.current }));
-          await sendOffer();
+          try {
+            await sendOffer();
+          } catch {
+            stopRetry();
+          }
         })();
       }, 4000);
     },

@@ -8,6 +8,7 @@ import { useActiveCall } from "@/lib/ActiveCallContext";
 import {
   findMatchByRoomId,
   parseNumericRoomId,
+  peerMatchesRoom,
   readChatPeer,
 } from "@/lib/letsmeet";
 import Avatar from "@/components/Avatar";
@@ -59,7 +60,7 @@ function VideoCallContent() {
   useEffect(() => {
     if (roomId == null) return;
     const peer = readChatPeer();
-    if (peer?.name) {
+    if (peer?.name && peerMatchesRoom(peer, roomId)) {
       setName(peer.name);
       setPhoto(peer.photo);
       return;
@@ -81,11 +82,14 @@ function VideoCallContent() {
     if (activeRoomId === roomId && inCall) return; // Already connected to this room
     if (activeRoomId === roomId) return; // Already connecting
 
-    startCall(roomId, {
+    void startCall(roomId, {
       audioOnly: audioOnlyParam,
       acceptIncoming,
       peerName: name,
       peerPhoto: photo,
+    }).catch(() => {
+      // Status is already surfaced via `status` from ActiveCallContext
+      // (e.g. permission denied); nothing else to do here.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);

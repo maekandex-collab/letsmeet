@@ -230,6 +230,18 @@ export function normalizePhone(input: string): string {
   return `234${digits}`;
 }
 
+/** True when the backend returned its default logo instead of a real photo. */
+export function isDefaultProfilePlaceholder(path?: string | null): boolean {
+  if (!path) return true;
+  const lower = path.toLowerCase();
+  return (
+    lower.includes("/static/images/logos") ||
+    lower.includes("logos.png") ||
+    lower.includes("default_profile") ||
+    lower.includes("placeholder")
+  );
+}
+
 /** Strip junk values; always returns a clean `/media/...` path or null. */
 export function normalizeMediaInput(path?: string | null): string | null {
   const value = path?.trim();
@@ -636,7 +648,10 @@ export async function bootstrapChatRoomId(
   if (!match) return null;
   const roomId = resolveNumericRoomId(match);
   if (roomId == null) return null;
-  linkMatchRoomIds(roomId, [match.chatroom_id, chatroomParam, match.id]);
+  // Only alias room-scoped identifiers here — `match.id` is a generic
+  // match/like-system row id (not chat-room-scoped) and can collide with
+  // an unrelated match's numeric room id, corrupting room resolution.
+  linkMatchRoomIds(roomId, [match.chatroom_id, chatroomParam]);
   return roomId;
 }
 
@@ -682,6 +697,25 @@ export function readChatPeer(): ChatPeerContext | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * `readChatPeer()` is a single global slot that gets overwritten every time
+ * any chat/call is opened. It must never be trusted for a room it doesn't
+ * actually belong to — otherwise a stale peer from a previously-opened
+ * conversation leaks into whatever room is currently being resolved
+ * (wrong messages/name shown, wrong call routed, etc).
+ */
+export function peerMatchesRoom(
+  peer: ChatPeerContext | null,
+  roomId: string | number
+): boolean {
+  if (!peer) return false;
+  const raw = String(roomId).trim();
+  if (!raw) return false;
+  if (peer.chatroomId && peer.chatroomId.trim() === raw) return true;
+  if (peer.roomId != null && String(peer.roomId) === raw) return true;
+  return false;
 }
 
 export async function findMatchByRoomId(
@@ -805,7 +839,9 @@ export function resolveCanonicalInboxKey(roomId: string | number): string {
   if (!/^\d+$/.test(raw)) return raw;
 
   const peer = readChatPeer();
-  if (peer?.chatroomId?.trim()) return peer.chatroomId.trim();
+  if (peerMatchesRoom(peer, raw) && peer?.chatroomId?.trim()) {
+    return peer.chatroomId.trim();
+  }
 
   if (typeof window !== "undefined") {
     try {
@@ -836,10 +872,12 @@ export function resolveApiRoomId(roomId: string | number): number | null {
   if (stashed != null) return stashed;
 
   const peer = readChatPeer();
-  if (peer?.roomId != null && Number.isFinite(peer.roomId)) return peer.roomId;
-  if (peer?.chatroomId) {
-    const fromPeer = getStashedChatRoomId(peer.chatroomId);
-    if (fromPeer != null) return fromPeer;
+  if (peerMatchesRoom(peer, raw)) {
+    if (peer?.roomId != null && Number.isFinite(peer.roomId)) return peer.roomId;
+    if (peer?.chatroomId) {
+      const fromPeer = getStashedChatRoomId(peer.chatroomId);
+      if (fromPeer != null) return fromPeer;
+    }
   }
 
   return null;
@@ -858,9 +896,10 @@ export function chatroomIdForApi(roomId: string | number): string | null {
   const raw = String(roomId).trim();
   if (!raw) return null;
   if (!/^\d+$/.test(raw)) return raw; // already the chatroom UUID
-  // A numeric id was passed — recover the UUID from the current peer context.
+  // A numeric id was passed — recover the UUID from the current peer context,
+  // but only if that peer actually belongs to this room.
   const peer = readChatPeer();
-  if (peer?.chatroomId) return peer.chatroomId;
+  if (peerMatchesRoom(peer, raw) && peer?.chatroomId) return peer.chatroomId;
   return raw;
 }
 
@@ -870,8 +909,10 @@ function chatStorageKeys(roomId: string | number): string[] {
   if (raw) keys.add(raw);
 
   const peer = readChatPeer();
-  if (peer?.chatroomId) keys.add(peer.chatroomId.trim());
-  if (peer?.roomId != null) keys.add(String(peer.roomId));
+  if (peerMatchesRoom(peer, raw)) {
+    if (peer?.chatroomId) keys.add(peer.chatroomId.trim());
+    if (peer?.roomId != null) keys.add(String(peer.roomId));
+  }
 
   const stashed = getStashedChatRoomId(raw);
   if (stashed != null) keys.add(String(stashed));

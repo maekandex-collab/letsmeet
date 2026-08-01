@@ -8,6 +8,8 @@ interface ProfilePhotoProps {
   alt: string;
   /** Top visible card — load immediately */
   priority?: boolean;
+  /** How the image fills its container. Default `contain`. */
+  fit?: "contain" | "cover";
 }
 
 function Placeholder() {
@@ -26,7 +28,7 @@ function Placeholder() {
   );
 }
 
-export default function ProfilePhoto({ photo, alt, priority = false }: ProfilePhotoProps) {
+export default function ProfilePhoto({ photo, alt, priority = false, fit = "contain" }: ProfilePhotoProps) {
   const { src, loaded, failed, onLoad, onError, bindImg, hasPhoto } = useMediaDisplay(photo);
 
   if (!hasPhoto || !src || failed) return <Placeholder />;
@@ -47,9 +49,9 @@ export default function ProfilePhoto({ photo, alt, priority = false }: ProfilePh
         fetchPriority={priority ? "high" : "auto"}
         onLoad={onLoad}
         onError={onError}
-        className={`absolute inset-0 w-full h-full object-contain object-center transition-opacity duration-200 ${
-          loaded ? "opacity-100" : "opacity-0"
-        }`}
+        className={`absolute inset-0 w-full h-full object-center transition-opacity duration-200 ${
+          fit === "cover" ? "object-cover" : "object-contain"
+        } ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </>
   );

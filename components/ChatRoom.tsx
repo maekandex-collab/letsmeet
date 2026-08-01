@@ -18,6 +18,7 @@ import {
   linkMatchRoomIds,
   stashChatRoomId,
   readChatPeer,
+  peerMatchesRoom,
   findMatchByRoomId,
   buildVideoCallHref,
   buildAudioCallHref,
@@ -96,7 +97,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
     (async () => {
       const peer = readChatPeer();
-      if (peer?.roomId === roomId || peer?.userId) {
+      if (peer && peerMatchesRoom(peer, roomId)) {
         if (!cancelled) {
           setName(peer.name || "Chat");
           setUserId(peer.userId);
@@ -129,7 +130,10 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         });
         const resolved = resolveNumericRoomId(match);
         if (resolved != null) {
-          linkMatchRoomIds(resolved, [match.chatroom_id, roomId, match.id]);
+          // Only alias room-scoped identifiers — `match.id` is a generic
+          // match/like-system id and can collide with an unrelated match's
+          // numeric room id, corrupting room resolution app-wide.
+          linkMatchRoomIds(resolved, [match.chatroom_id, roomId]);
         }
       }
 
@@ -165,6 +169,13 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       cancelled = true;
     };
   }, [userId, roomId]);
+
+  // Reset messages the instant the room changes so a previous conversation's
+  // messages can never linger on screen while the new room's data loads.
+  useEffect(() => {
+    setMessages([]);
+    setHistoryLoading(true);
+  }, [roomId]);
 
   useEffect(() => {
     const local = loadChatMessages(storageKey);
