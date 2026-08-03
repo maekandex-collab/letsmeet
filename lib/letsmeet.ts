@@ -79,10 +79,17 @@ export function storeHashedUserId(id: string): void {
 
 export function getStoredHashedUserId(): string | null {
   const user = getUser();
-  if (user?.hashedUserId) return user.hashedUserId;
+  const fromUser = user?.hashedUserId?.trim();
+  if (fromUser && !/^\d+$/.test(fromUser)) return fromUser;
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(HASHED_USER_ID_KEY);
+    const stored = window.localStorage.getItem(HASHED_USER_ID_KEY)?.trim();
+    if (stored && /^\d+$/.test(stored)) {
+      // Legacy bug: phone tails were stored as hashed ids.
+      window.localStorage.removeItem(HASHED_USER_ID_KEY);
+      return null;
+    }
+    return stored || null;
   } catch {
     return null;
   }
@@ -179,6 +186,13 @@ export function clearSession(): void {
     // ignore
   }
   resetDiscoverLocalState();
+  // Lazy import avoided — clear inbox key directly to prevent circular deps at module init.
+  try {
+    window.localStorage.removeItem("lm_chat_inbox");
+    window.dispatchEvent(new Event("lm-inbox-change"));
+  } catch {
+    // ignore
+  }
 }
 
 /** Clear feed cache, swiped ids, and filter prefs — call on sign-up / sign-in / logout. */
@@ -1296,9 +1310,27 @@ export function persistLoginSession(
     hashedUserId: hash ?? extras?.hashedUserId,
   });
   if (hash) storeHashedUserId(hash);
+  else if (typeof window !== "undefined") {
+    // Drop any stale phone-number "hash" left from older app versions.
+    try {
+      const stale = window.localStorage.getItem(HASHED_USER_ID_KEY);
+      if (stale && /^\d+$/.test(stale)) {
+        window.localStorage.removeItem(HASHED_USER_ID_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   const cache = loginProfileCacheFromResponse(loginData);
   if (cache) storeLoginProfileCache(cache);
+
+  try {
+    window.localStorage.removeItem("lm_chat_inbox");
+    window.dispatchEvent(new Event("lm-inbox-change"));
+  } catch {
+    // ignore
+  }
 }
 
 export interface ProfileCard {
@@ -1923,7 +1955,10 @@ export function normalizeSingleProfile(raw: Record<string, unknown>): SingleProf
   };
 }
 
-async function tryLoadSingleProfile(userId: string): Promise<SingleProfile | null> {
+async function tryLoadSingleProfile(
+  userId: string,
+  opts?: { persistHash?: boolean }
+): Promise<SingleProfile | null> {
   const res = await getSingleProfile(userId);
   if (!res.ok || !res.data) return null;
   const wrapped = res.data as Record<string, unknown>;
@@ -1932,8 +1967,56 @@ async function tryLoadSingleProfile(userId: string): Promise<SingleProfile | nul
       ? (wrapped.profile as Record<string, unknown>)
       : wrapped;
   if (!raw.name && !raw.gender && !raw.about_me && !raw.profile_image) return null;
-  storeHashedUserId(userId);
+  // Only persist real hashed ids — never phone tails / numeric swipe ids.
+  const looksHashed = !/^\d+$/.test(userId) && userId.length >= 8;
+  if (opts?.persistHash !== false && looksHashed) {
+    storeHashedUserId(userId);
+  }
   return normalizeSingleProfile(raw);
+}
+
+function namesCompatible(a?: string | null, b?: string | null): boolean {
+  const na = (a ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  const nb = (b ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!na || !nb) return true;
+  if (na === nb) return true;
+  const aParts = na.split(" ");
+  const bParts = nb.split(" ");
+  return aParts[0] === bParts[0];
+}
+
+/** True when a fetched profile name matches the signed-in session name. */
+export function profileMatchesSession(
+  profileName?: string | null,
+  sessionName?: string | null
+): boolean {
+  const session = (sessionName ?? getUser()?.fullName ?? "").trim();
+  if (!session) return true;
+  return namesCompatible(session, profileName);
+}
+
+export function clearLoginProfileCache(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LOGIN_PROFILE_CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** Drop a hashed id that resolved someone else's profile. */
+export function clearStoredHashedUserId(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(HASHED_USER_ID_KEY);
+  } catch {
+    // ignore
+  }
+  const user = getUser();
+  if (user?.hashedUserId) {
+    const { hashedUserId: _drop, ...rest } = user;
+    setSession(getToken() ?? "", rest);
+  }
 }
 
 /** Fetch the signed-in user's profile via GET /single/user/profile. */
@@ -1945,9 +2028,17 @@ export async function fetchMyProfile(): Promise<{
   const user = getUser();
   if (!user) return { ok: false, profile: null, error: "Not signed in." };
 
-  const candidates = new Set<string>();
-  const stored = getStoredHashedUserId();
-  if (stored) candidates.add(stored);
+  const candidates: string[] = [];
+  const push = (id?: string | null) => {
+    const v = (id ?? "").trim();
+    if (!v || candidates.includes(v)) return;
+    // Never use phone numbers as profile ids — they resolve other users' public profiles.
+    if (/^\d{7,}$/.test(v)) return;
+    candidates.push(v);
+  };
+
+  push(getStoredHashedUserId());
+  push(user.hashedUserId);
 
   const token = getToken();
   if (token) {
@@ -1959,9 +2050,9 @@ export async function fetchMyProfile(): Promise<{
             ? window.atob(parts[1])
             : Buffer.from(parts[1], "base64").toString("utf-8")
         ) as Record<string, unknown>;
-        for (const key of ["user_hash", "hash", "uuid", "profile_id"]) {
+        for (const key of ["user_hash", "hash", "uuid", "profile_id", "hashed_user_id"]) {
           const v = payload[key];
-          if (typeof v === "string" && v.length >= 8) candidates.add(v);
+          if (typeof v === "string") push(v);
         }
       }
     } catch {
@@ -1969,16 +2060,32 @@ export async function fetchMyProfile(): Promise<{
     }
   }
 
-  if (user.phone) {
-    const digits = user.phone.replace(/\D/g, "");
-    const tail = digits.slice(-10);
-    if (tail.length === 10) candidates.add(tail);
-  }
-  if (user.userId) candidates.add(String(user.userId));
+  // Only trust the session name — never the possibly-poisoned login photo cache.
+  const sessionName = (user.fullName ?? "").trim();
 
-  for (const id of Array.from(candidates)) {
-    const profile = await tryLoadSingleProfile(id);
-    if (profile) return { ok: true, profile };
+  for (const id of candidates) {
+    const profile = await tryLoadSingleProfile(id, { persistHash: false });
+    if (!profile) continue;
+    if (sessionName && !namesCompatible(sessionName, profile.name)) {
+      // Wrong person resolved from a stale hash — drop it and keep looking.
+      if (getStoredHashedUserId() === id) clearStoredHashedUserId();
+      continue;
+    }
+    const looksHashed = !/^\d+$/.test(id) && id.length >= 8;
+    if (looksHashed) storeHashedUserId(id);
+    return { ok: true, profile };
+  }
+
+  // Last resort only when we have no session name to verify against.
+  if (!sessionName) {
+    for (const id of candidates) {
+      const profile = await tryLoadSingleProfile(id, { persistHash: false });
+      if (profile) {
+        const looksHashed = !/^\d+$/.test(id) && id.length >= 8;
+        if (looksHashed) storeHashedUserId(id);
+        return { ok: true, profile };
+      }
+    }
   }
 
   return {
@@ -2137,4 +2244,13 @@ export function updatePassword(number: string, pin: string, confirm_pin: string)
   } catch (error) {
     console.log(error)
   }
+}
+
+/** Authenticated PIN change (settings → Change PIN). */
+export function changePassword(old_pin: string, new_pin: string) {
+  return request<unknown>("/change/password", {
+    method: "POST",
+    body: { old_pin, new_pin },
+    auth: true,
+  });
 }

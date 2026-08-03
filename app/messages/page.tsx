@@ -9,6 +9,7 @@ import UnreadBadge from "@/components/UnreadBadge";
 import {
   getInboxEntry,
   hydrateInboxFromApi,
+  pruneInboxToRooms,
   upsertInboxPeer,
 } from "@/lib/chatInbox";
 import { useInboxMap, useTotalUnread } from "@/lib/useInboxUnread";
@@ -45,6 +46,7 @@ export default function MessagesPage() {
     if (res.ok) {
       const list = normalize(res.data);
       setMatches(list);
+      pruneInboxToRooms(list.map((m) => inboxKeyForMatch(m)));
       prefetchMedia(list.map((c) => c.profile_photo));
       for (const m of list) {
         upsertInboxPeer(inboxKeyForMatch(m), {
@@ -55,6 +57,7 @@ export default function MessagesPage() {
       }
       return list;
     }
+    pruneInboxToRooms([]);
     return [];
   }, []);
 

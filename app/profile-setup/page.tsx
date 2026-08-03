@@ -3,7 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import { InputField, SelectField } from "@/components/FormFields";
-import { uploadProfile, extractError, updateUser, getUser, storeUserReligion, extractHashedUserId, storeHashedUserId, verifyProfileOnBackend } from "@/lib/letsmeet";
+import {
+  uploadProfile,
+  extractError,
+  updateUser,
+  getUser,
+  storeUserReligion,
+  extractHashedUserId,
+  storeHashedUserId,
+  verifyProfileOnBackend,
+  isProfileAlreadyCompletedError,
+} from "@/lib/letsmeet";
 import { getDraft, clearDraft, dataUrlToBlob } from "@/lib/profileDraft";
 
 export default function ProfileSetupPage() {
@@ -21,11 +31,28 @@ export default function ProfileSetupPage() {
     if (user) {
       setName(user.fullName ?? "");
       setPhone(user.phone ?? "");
+      if (user.profileCompleted) {
+        router.replace("/home");
+        return;
+      }
     }
     const draft = getDraft();
     if (draft.photos && draft.photos[0]) setMainPhoto(draft.photos[0]);
     if (draft.gender) setGender(draft.gender);
-  }, []);
+
+    let cancelled = false;
+    (async () => {
+      if (await verifyProfileOnBackend()) {
+        if (cancelled) return;
+        updateUser({ profileCompleted: true });
+        clearDraft();
+        router.replace("/home");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   function onPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -33,6 +60,13 @@ export default function ProfileSetupPage() {
     const reader = new FileReader();
     reader.onload = (ev) => setMainPhoto(ev.target?.result as string);
     reader.readAsDataURL(file);
+  }
+
+  async function finishOnboarding(draftReligion?: string) {
+    if (draftReligion) storeUserReligion(draftReligion);
+    updateUser({ profileCompleted: true });
+    clearDraft();
+    router.push("/all-set");
   }
 
   async function handleContinue() {
@@ -63,35 +97,24 @@ export default function ProfileSetupPage() {
         image2,
       });
 
-      if (res.ok || res.status === 500) {
+      const alreadyDone = isProfileAlreadyCompletedError(res);
+      if (res.ok || res.status === 500 || alreadyDone) {
         const hash = extractHashedUserId(res.data);
         if (hash) storeHashedUserId(hash);
-        if (draft.religion) storeUserReligion(draft.religion);
 
-        let verified = false;
+        // Best-effort: wait briefly for Discover to pick up the profile.
         for (let attempt = 0; attempt < 4; attempt++) {
-          if (await verifyProfileOnBackend()) {
-            verified = true;
-            break;
-          }
+          if (await verifyProfileOnBackend()) break;
           if (attempt < 3) {
             await new Promise((resolve) => setTimeout(resolve, 800));
           }
         }
 
-        if (!verified) {
-          updateUser({ profileCompleted: false });
-          setError(
-            "We saved your details, but your profile is not live on Discover yet. Wait a moment and tap Continue again."
-          );
-          return;
-        }
-
-        updateUser({ profileCompleted: true });
-        clearDraft();
-        router.push("/all-set");
+        // Server accepted the profile (or it was already completed) — don't trap the user here.
+        await finishOnboarding(draft.religion);
         return;
       }
+
       setError(extractError(res.data, "Could not save your profile."));
     } catch {
       setError("Network error. Please try again.");

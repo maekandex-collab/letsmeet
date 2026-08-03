@@ -14,11 +14,12 @@ const RELIGIONS = [
   { value: "Other", label: "Other" },
 ];
 
-function FaithIcon() {
+function AboutYouIcon() {
   return (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="3.5" stroke="#F759F5" strokeWidth="2" />
       <path
-        d="M12 2v20M8 6h8M6 10h12"
+        d="M5 19.5c1.5-3.5 4-5 7-5s5.5 1.5 7 5"
         stroke="#F759F5"
         strokeWidth="2"
         strokeLinecap="round"
@@ -46,17 +47,12 @@ export default function ReligionPage() {
   }
 
   function handleContinue() {
+    if (!canContinue) return;
     saveDraft({
       religion,
       occupation: occupation.trim(),
       show_location: true,
     });
-    clearDiscoverReligionFilter();
-    router.push("/profile-setup");
-  }
-
-  function handleSkip() {
-    saveDraft({ show_location: true });
     clearDiscoverReligionFilter();
     router.push("/profile-setup");
   }
@@ -71,7 +67,7 @@ export default function ReligionPage() {
             <div className="absolute w-36 h-36 rounded-full bg-primary/5" />
             <div className="absolute w-24 h-24 rounded-full bg-primary/10" />
             <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center">
-              <FaithIcon />
+              <AboutYouIcon />
             </div>
           </div>
           <h1 className="screen-title mb-1 text-center">A little more about you</h1>
@@ -83,13 +79,14 @@ export default function ReligionPage() {
 
         <div className="input-group">
           <label htmlFor="religion" className="input-label">
-            Religion
+            Religion *
           </label>
           <div className="input-wrapper">
             <select
               id="religion"
               value={religion}
               onChange={(e) => setReligion(e.target.value)}
+              required
               className="input-field appearance-none cursor-pointer pl-4 pr-10"
             >
               <option value="" disabled>
@@ -116,7 +113,7 @@ export default function ReligionPage() {
         </div>
 
         <InputField
-          label="Occupation"
+          label="Occupation *"
           id="occupation"
           name="occupation"
           placeholder="e.g. Software Engineer, Student, Nurse"
@@ -140,7 +137,7 @@ export default function ReligionPage() {
         {canContinue && (
           <div className="mt-5 flex items-center gap-3 bg-primary-light rounded-2xl px-4 py-3">
             <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-              <FaithIcon />
+              <AboutYouIcon />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-dark">{religion}</p>
@@ -150,16 +147,13 @@ export default function ReligionPage() {
         )}
       </div>
 
-      <div className="bottom-bar flex-col gap-3">
+      <div className="bottom-bar">
         <button
           onClick={handleContinue}
           disabled={!canContinue}
           className={`btn-primary text-center ${!canContinue ? "opacity-40 pointer-events-none" : ""}`}
         >
           Continue
-        </button>
-        <button onClick={handleSkip} className="btn-secondary text-center">
-          Skip for now
         </button>
       </div>
     </div>

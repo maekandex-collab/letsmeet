@@ -21,6 +21,9 @@ import {
   getLocalProfileDraft,
   profileImageUrlsFromDraft,
   storeLoginProfileCache,
+  clearLoginProfileCache,
+  clearStoredHashedUserId,
+  profileMatchesSession,
   saveAccountProfile,
   clearMediaCache,
 } from "@/lib/letsmeet";
@@ -189,25 +192,35 @@ export default function AccountPage() {
    * photo, the only two fields this screen actually requires to function.
    */
   const applyLoginCacheFallback = useCallback((): boolean => {
+    const sessionName = (getUser()?.fullName ?? "").trim();
     const draft = getLocalProfileDraft();
     if (draft) {
-      if (draft.full_name) setName(draft.full_name);
+      if (draft.full_name && profileMatchesSession(draft.full_name, sessionName)) {
+        setName((prev) => prev || draft.full_name || "");
+      }
       if (draft.gender) setGender(draft.gender.toLowerCase());
       if (draft.about_me) setAboutMe(draft.about_me);
       if (draft.location) setLocation(draft.location);
       if (draft.interests) setInterests(draft.interests);
       if (draft.sexual_orientation) setSexualOrientation(draft.sexual_orientation);
       if (draft.religion) setReligion(draft.religion);
-      const urls = profileImageUrlsFromDraft(draft);
-      applyProfilePhotos(urls);
-      setLocalOnlyNotice(
-        "Showing changes saved on this device. The server has not accepted profile edits yet."
-      );
-      return Boolean(draft.gender) && urls.some(Boolean);
+      if (!draft.full_name || profileMatchesSession(draft.full_name, sessionName)) {
+        const urls = profileImageUrlsFromDraft(draft);
+        applyProfilePhotos(urls);
+        setLocalOnlyNotice(
+          "Showing changes saved on this device. The server has not accepted profile edits yet."
+        );
+        return Boolean(draft.gender) && urls.some(Boolean);
+      }
     }
 
     const cache = getLoginProfileCache();
     if (!cache) return false;
+    if (sessionName && cache.full_name && !profileMatchesSession(cache.full_name, sessionName)) {
+      clearLoginProfileCache();
+      clearStoredHashedUserId();
+      return false;
+    }
     if (cache.full_name) setName((prev) => prev || cache.full_name || "");
     if (cache.gender) {
       const g = cache.gender.toLowerCase();
@@ -255,30 +268,35 @@ export default function AccountPage() {
       const result = await fetchMyProfile();
       if (result.profile) {
         const p = result.profile;
-        if (p.name) setName(p.name);
-        if (p.gender) setGender(p.gender.toLowerCase());
-        if (p.about_me) setAboutMe(p.about_me);
-        if (p.location) setLocation(p.location);
-        if (p.interests) setInterests(p.interests);
-        if (p.sexual_orientation) setSexualOrientation(p.sexual_orientation);
-        if (p.religion) setReligion(p.religion);
-        applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
-        storeLoginProfileCache({
-          profile_image: p.profile_image,
-          image1: p.image1 ?? null,
-          image2: p.image2 ?? null,
-          gender: p.gender,
-          full_name: p.name,
-        });
-        if (p.date_of_birth > 0 && p.date_of_birth < 120) {
-          setProfileAge(p.date_of_birth);
+        const sessionName = (getUser()?.fullName ?? "").trim();
+        if (sessionName && !profileMatchesSession(p.name, sessionName)) {
+          clearLoginProfileCache();
+          clearStoredHashedUserId();
+          applyProfilePhotos([null, null, null]);
+          setName(sessionName);
+          setNotice("We couldn't verify your profile photos. Please upload them again.");
+        } else {
+          const displayName = (p.name || sessionName).trim();
+          if (displayName) setName(displayName);
+          if (p.gender) setGender(p.gender.toLowerCase());
+          if (p.about_me) setAboutMe(p.about_me);
+          if (p.location) setLocation(p.location);
+          if (p.interests) setInterests(p.interests);
+          if (p.sexual_orientation) setSexualOrientation(p.sexual_orientation);
+          if (p.religion) setReligion(p.religion);
+          applyProfilePhotos([p.profile_image, p.image1 ?? null, p.image2 ?? null]);
+          storeLoginProfileCache({
+            profile_image: p.profile_image,
+            image1: p.image1 ?? null,
+            image2: p.image2 ?? null,
+            gender: p.gender,
+            full_name: displayName || p.name,
+          });
+          if (p.date_of_birth > 0 && p.date_of_birth < 120) {
+            setProfileAge(p.date_of_birth);
+          }
         }
       } else if (result.error && !hasEssentialsFromCache) {
-        // Only surface this when the page genuinely has nothing to show —
-        // if we already have gender + a photo from the login cache/local
-        // draft, the extra profile fetch (about-me/location/interests,
-        // fields this screen doesn't even display) failing isn't something
-        // the user needs to worry about.
         setNotice(result.error);
       }
       setLoading(false);

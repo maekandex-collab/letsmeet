@@ -3,31 +3,55 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { saveDraft, compressImage } from "@/lib/profileDraft";
 
-const ORIENTATIONS = ["Straight", "Asexual", "Heterosexual", "Bisexual", "Others"];
-const SHOW_ME = ["Women", "Men", "Others"];
+const ORIENTATIONS = ["Straight", "Asexual", "Others"];
 const INTERESTS = [
-  "Hiking","Travel","Photography","Cooking","Reading","Gaming","Yoga","Meditation","Dancing","Painting",
-  "Gym","Cycling","Running","Swimming","Surfing","Skiing","Snowboarding","Rock Climbing","Martial Arts","Boxing",
-  "Football","Basketball","Tennis","Golf","Volleyball","Baseball","Cricket","Rugby","Badminton","Table Tennis",
-  "Music","Guitar","Piano","Drums","Singing","DJ","Podcasts","Concerts","Theatre","Broadway",
-  "Movies","Anime","Comics","NFTs","Crypto","Technology","Coding","Design","Architecture","Fashion",
-  "Makeup","Skincare","Fitness","Bodybuilding","Pilates","CrossFit","Zumba","Skateboarding","BMX","Motorcycles",
-  "Cars","Foodie","Wine","Coffee","Tea","Baking","Veganism","Astrology","Spirituality","Volunteering",
-  "Entrepreneurship","Investing","Politics","History","Science","Nature","Camping","Fishing","Hunting","Birds",
-  "Pets","Dogs","Cats","Art","Sculpture","Writing","Poetry","Blogging","Languages","Board Games","Chess",
+  "Cooking",
+  "Dancing",
+  "Afrobeats",
+  "Nollywood",
+  "Football",
+  "Fashion",
+  "Church",
+  "Gospel Music",
+  "Foodie",
+  "Travel",
+  "Photography",
+  "Gym",
+  "Reading",
+  "Gaming",
+  "Entrepreneurship",
+  "Comedy",
+  "Makeup",
+  "Skincare",
+  "Clubbing",
+  "Owambe",
+  "Football Viewing",
+  "Music",
+  "Singing",
+  "Movies",
 ];
 
-const STEP_LABELS = ["Orientation", "Show Me", "Interests", "Photos", "Bio"];
+const MIN_INTERESTS = 4;
+const MAX_INTERESTS = 6;
+const MIN_BIO_WORDS = 20;
+
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+const STEP_LABELS = ["Attraction", "Interests", "Photos", "Bio"];
 
 export default function SetupPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
 
   const [orientation, setOrientation] = useState<string[]>([]);
-  const [showMe, setShowMe] = useState("Women");
   const [interests, setInterests] = useState<string[]>([]);
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null]);
   const [bio, setBio] = useState("");
+
+  const bioWords = countWords(bio);
+  const bioReady = bioWords >= MIN_BIO_WORDS;
 
   const inputRefs = [
     useRef<HTMLInputElement>(null),
@@ -44,7 +68,11 @@ export default function SetupPage() {
   }
 
   function toggleInterest(i: string) {
-    setInterests((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+    setInterests((prev) => {
+      if (prev.includes(i)) return prev.filter((x) => x !== i);
+      if (prev.length >= MAX_INTERESTS) return prev;
+      return [...prev, i];
+    });
   }
 
   function onFileChange(i: number, e: React.ChangeEvent<HTMLInputElement>) {
@@ -65,11 +93,12 @@ export default function SetupPage() {
 
   function next() {
     if (step === 0 && orientation.length === 0) return;
-    if (step === 3 && !photos[0]) return;
+    if (step === 1 && (interests.length < MIN_INTERESTS || interests.length > MAX_INTERESTS)) return;
+    if (step === 2 && photos.some((p) => !p)) return;
     if (isLast) {
+      if (!bioReady) return;
       saveDraft({
         sexual_orientation: orientation.join(", "),
-        show_me: showMe,
         interests,
         about_me: bio,
         photos: photos.filter((p): p is string => !!p),
@@ -156,7 +185,7 @@ export default function SetupPage() {
       <div className="flex-1 overflow-y-auto px-5 pb-28 pt-4">
         {step === 0 && (
           <>
-            <h1 className="screen-title mb-1">My Sexual Orientation Is</h1>
+            <h1 className="screen-title mb-1">My Sexual Attraction Is</h1>
             <p className="screen-subtitle mb-6">Select up to 3</p>
             <div className="flex flex-col gap-2">
               {ORIENTATIONS.map((o) => (
@@ -181,56 +210,40 @@ export default function SetupPage() {
 
         {step === 1 && (
           <>
-            <h1 className="screen-title mb-1">Show Me</h1>
-            <p className="screen-subtitle mb-6">You can update this info later.</p>
-            <div className="flex flex-col gap-2">
-              {SHOW_ME.map((o) => (
-                <label
-                  key={o}
-                  className={`flex items-center justify-between py-4 px-4 rounded-2xl border-2 cursor-pointer transition-colors ${
-                    showMe === o ? "border-primary bg-primary-light" : "border-border hover:border-primary"
-                  }`}
-                >
-                  <span className="text-base font-semibold text-dark">{o}</span>
-                  <input
-                    type="radio"
-                    name="show-me"
-                    checked={showMe === o}
-                    onChange={() => setShowMe(o)}
-                    className="accent-primary w-4 h-4"
-                  />
-                </label>
-              ))}
+            <h1 className="screen-title mb-1">My Interests</h1>
+            <p className="screen-subtitle mb-6">
+              Choose {MIN_INTERESTS}–{MAX_INTERESTS} interests ({interests.length}/{MAX_INTERESTS})
+            </p>
+            <div className="flex flex-wrap gap-2.5">
+              {INTERESTS.map((interest) => {
+                const selected = interests.includes(interest);
+                const atMax = !selected && interests.length >= MAX_INTERESTS;
+                return (
+                  <label
+                    key={interest}
+                    className={`cursor-pointer ${atMax ? "opacity-40 cursor-not-allowed" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleInterest(interest)}
+                      disabled={atMax}
+                      className="sr-only peer"
+                    />
+                    <span className="inline-block px-4 py-2 rounded-full border-2 border-border text-sm font-semibold text-dark peer-checked:border-primary peer-checked:bg-primary-light peer-checked:text-primary transition-colors">
+                      {interest}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </>
         )}
 
         {step === 2 && (
           <>
-            <h1 className="screen-title mb-1">My Interests</h1>
-            <p className="screen-subtitle mb-6">Let everyone know what you&apos;re passionate about.</p>
-            <div className="flex flex-wrap gap-2.5">
-              {INTERESTS.map((interest) => (
-                <label key={interest} className="cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={interests.includes(interest)}
-                    onChange={() => toggleInterest(interest)}
-                    className="sr-only peer"
-                  />
-                  <span className="inline-block px-4 py-2 rounded-full border-2 border-border text-sm font-semibold text-dark peer-checked:border-primary peer-checked:bg-primary-light peer-checked:text-primary transition-colors">
-                    {interest}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </>
-        )}
-
-        {step === 3 && (
-          <>
             <h1 className="screen-title mb-1">Add Your Photos</h1>
-            <p className="screen-subtitle mb-6">Add up to 3 photos. Your first photo is your main profile picture.</p>
+            <p className="screen-subtitle mb-6">Add all 3 photos to continue. Your first photo is your main profile picture.</p>
             <div className="grid grid-cols-2 gap-3" style={{ height: 340 }}>
               <PhotoCard index={0} className="h-full" />
               <div className="flex flex-col gap-3 h-full">
@@ -241,16 +254,18 @@ export default function SetupPage() {
           </>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <>
             <h1 className="screen-title mb-1">About Me</h1>
-            <p className="screen-subtitle mb-6">Tell people what makes you unique.</p>
+            <p className="screen-subtitle mb-6">
+              Required — write at least {MIN_BIO_WORDS} words ({bioWords}/{MIN_BIO_WORDS})
+            </p>
             <div className="relative">
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value.slice(0, 300))}
                 rows={6}
-                placeholder="e.g. Coffee lover, adventure seeker, sunset chaser. Looking for someone who makes me laugh and keeps life interesting…"
+                placeholder="e.g. I love cooking jollof on weekends, dancing to Afrobeats, and hanging with friends who keep things real. Looking for someone kind and fun…"
                 className="w-full rounded-3xl border-2 border-border bg-border px-5 py-4 text-base font-medium text-dark placeholder-muted/60 outline-none focus:border-primary resize-none transition-colors leading-relaxed"
               />
               <span className={`absolute bottom-4 right-5 text-xs font-medium ${bio.length >= 300 ? "text-primary" : "text-muted"}`}>
@@ -267,7 +282,12 @@ export default function SetupPage() {
       <div className="bottom-bar">
         <button
           onClick={next}
-          disabled={(step === 0 && orientation.length === 0) || (step === 3 && !photos[0])}
+          disabled={
+            (step === 0 && orientation.length === 0) ||
+            (step === 1 && (interests.length < MIN_INTERESTS || interests.length > MAX_INTERESTS)) ||
+            (step === 2 && photos.some((p) => !p)) ||
+            (isLast && !bioReady)
+          }
           className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isLast ? "Let's Go!" : "Continue"}

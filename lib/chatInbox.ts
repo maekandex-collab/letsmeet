@@ -59,8 +59,40 @@ export function getAllInboxEntries(): ChatInboxEntry[] {
   return Object.values(loadInboxMap());
 }
 
-export function getTotalUnreadCount(): number {
-  return getAllInboxEntries().reduce((sum, e) => sum + e.unreadCount, 0);
+export function getTotalUnreadCount(activeRoomIds?: (string | number)[]): number {
+  const entries = getAllInboxEntries();
+  if (!activeRoomIds) {
+    return entries.reduce((sum, e) => sum + e.unreadCount, 0);
+  }
+  const allowed = new Set(activeRoomIds.map((id) => inboxKey(id)));
+  return entries
+    .filter((e) => allowed.has(e.roomId) || allowed.has(inboxKey(e.roomId)))
+    .reduce((sum, e) => sum + e.unreadCount, 0);
+}
+
+/** Drop inbox rows that are not in the current match list (fixes ghost unread). */
+export function pruneInboxToRooms(roomIds: (string | number)[]): void {
+  if (typeof window === "undefined") return;
+  const allowed = new Set(roomIds.map((id) => inboxKey(id)));
+  const map = loadInboxMap();
+  let changed = false;
+  for (const key of Object.keys(map)) {
+    if (!allowed.has(key)) {
+      delete map[key];
+      changed = true;
+    }
+  }
+  if (changed) saveInboxMap(map);
+}
+
+export function clearChatInbox(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(INBOX_KEY);
+    window.dispatchEvent(new Event("lm-inbox-change"));
+  } catch {
+    // ignore
+  }
 }
 
 function countUnread(messages: StoredChatMessage[], lastReadAt: number): number {

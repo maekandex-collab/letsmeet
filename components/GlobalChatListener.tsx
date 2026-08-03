@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { deliverIncomingChatMessage } from "@/lib/chatDelivery";
-import { upsertInboxPeer } from "@/lib/chatInbox";
+import { pruneInboxToRooms, upsertInboxPeer } from "@/lib/chatInbox";
 import { parseWsChatMessage } from "@/lib/chatWs";
 import {
   callRoomIdsForMatch,
@@ -48,6 +48,7 @@ export default function GlobalChatListener() {
     if (!res.ok) return;
 
     const matches = parseProfileCards(res.data);
+    pruneInboxToRooms(matches.map((m) => chatRoomKey(m)));
     const nextRooms = new Set<string>();
 
     for (const match of matches) {
