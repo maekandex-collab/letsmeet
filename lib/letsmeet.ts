@@ -2014,7 +2014,8 @@ export function clearStoredHashedUserId(): void {
   }
   const user = getUser();
   if (user?.hashedUserId) {
-    const { hashedUserId: _drop, ...rest } = user;
+    const rest = { ...user };
+    delete rest.hashedUserId;
     setSession(getToken() ?? "", rest);
   }
 }
