@@ -1343,6 +1343,8 @@ export interface ProfileCard {
   chatroom_id?: string;
   /** Numeric room id for REST + WebSocket (same value per backend /chat/test/). */
   room_id?: number;
+  /** Match row id for POST /unmatched when present. */
+  match_id?: string;
 }
 
 /** Map varying backend field names onto ProfileCard. */
@@ -1355,6 +1357,7 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
 
   const idRaw = raw.id ?? raw.match_id;
   const userRaw = raw.user_id ?? raw.swipe_user_id ?? raw.id;
+  const matchRaw = raw.match_id ?? raw.id;
 
   const chatroomRaw = raw.chatroom_id ?? raw.room_id;
   const chatroomId =
@@ -1377,6 +1380,7 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
     profile_photo: photo,
     chatroom_id: chatroomId,
     room_id: roomId ?? undefined,
+    match_id: matchRaw != null && String(matchRaw).trim() ? String(matchRaw) : undefined,
   };
 }
 
@@ -1905,6 +1909,122 @@ export function getMessageList(roomId: number | string, page = 1) {
 export function markNotificationRead(id: number) {
   const params = new URLSearchParams({ notification_id: String(id) });
   return request(`/notification/read?${params}`, { auth: true });
+}
+
+/** Delete one notification — `GET /notification/delete?notification_id=` */
+export function deleteNotification(id: number | string) {
+  const params = new URLSearchParams({ notification_id: String(id) });
+  return request(`/notification/delete?${params}`, { auth: true });
+}
+
+/** Unmatch — `POST /unmatched` with `{ match_id }`. */
+export function unmatchUser(match_id: string) {
+  return request("/unmatched", {
+    method: "POST",
+    body: { match_id },
+    auth: true,
+  });
+}
+
+/** Resolve match_id for unmatch from a matched profile card. */
+export function matchIdForUnmatch(card: ProfileCard): string | null {
+  const id = (card.match_id ?? (card.id ? String(card.id) : "")).trim();
+  return id || null;
+}
+
+/**
+ * Best-effort ICE / call bootstrap — `GET /video_audio`.
+ * Upstream schema is empty; parse whatever usable iceServers/token we get.
+ */
+export type VideoAudioConfig = {
+  iceServers?: RTCIceServer[];
+  token?: string;
+  raw?: unknown;
+};
+
+function asIceServers(value: unknown): RTCIceServer[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const servers: RTCIceServer[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const urls = row.urls ?? row.url;
+    if (typeof urls === "string" || Array.isArray(urls)) {
+      const server: RTCIceServer = { urls: urls as string | string[] };
+      if (typeof row.username === "string") server.username = row.username;
+      if (typeof row.credential === "string") server.credential = row.credential;
+      servers.push(server);
+    }
+  }
+  return servers.length ? servers : undefined;
+}
+
+export function parseVideoAudioConfig(data: unknown): VideoAudioConfig {
+  if (!data || typeof data !== "object") return { raw: data };
+  const obj = data as Record<string, unknown>;
+  const nested =
+    obj.data && typeof obj.data === "object"
+      ? (obj.data as Record<string, unknown>)
+      : obj;
+  const iceServers =
+    asIceServers(nested.iceServers) ??
+    asIceServers(nested.ice_servers) ??
+    asIceServers(nested.servers);
+  const token =
+    typeof nested.token === "string"
+      ? nested.token
+      : typeof nested.access_token === "string"
+        ? nested.access_token
+        : undefined;
+  return { iceServers, token, raw: data };
+}
+
+let videoAudioCache: VideoAudioConfig | null = null;
+let videoAudioInflight: Promise<VideoAudioConfig> | null = null;
+
+export async function getVideoAudio(force = false): Promise<VideoAudioConfig> {
+  if (!force && videoAudioCache) return videoAudioCache;
+  if (!force && videoAudioInflight) return videoAudioInflight;
+
+  videoAudioInflight = (async () => {
+    try {
+      const res = await request<unknown>("/video_audio", { auth: true });
+      const config = res.ok ? parseVideoAudioConfig(res.data) : {};
+      videoAudioCache = config;
+      return config;
+    } catch {
+      return videoAudioCache ?? {};
+    } finally {
+      videoAudioInflight = null;
+    }
+  })();
+
+  return videoAudioInflight;
+}
+
+/** AI About Me — `POST /ai` with `{ username, content }` (no auth per OpenAPI). */
+export function generateAboutMeAi(body: { username: string; content: string }) {
+  return request<unknown>("/ai", {
+    method: "POST",
+    body: {
+      username: body.username.trim(),
+      content: body.content.trim(),
+    },
+  });
+}
+
+/** Pull a bio string from opaque AI response shapes. */
+export function normalizeAiAboutMe(data: unknown): string {
+  if (typeof data === "string") return data.trim();
+  if (!data || typeof data !== "object") return "";
+  const obj = data as Record<string, unknown>;
+  for (const key of ["about_me", "content", "message", "text", "result", "bio", "generated"]) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  if (obj.data != null) return normalizeAiAboutMe(obj.data);
+  if (obj.response != null) return normalizeAiAboutMe(obj.response);
+  return "";
 }
 
 export function getSingleProfile(userId: string) {

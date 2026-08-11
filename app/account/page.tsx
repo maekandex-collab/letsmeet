@@ -26,6 +26,9 @@ import {
   profileMatchesSession,
   saveAccountProfile,
   clearMediaCache,
+  generateAboutMeAi,
+  normalizeAiAboutMe,
+  extractError,
 } from "@/lib/letsmeet";
 
 const SETTINGS = [
@@ -179,6 +182,8 @@ export default function AccountPage() {
   const [notice, setNotice] = useState("");
   const [success, setSuccess] = useState("");
   const [localOnlyNotice, setLocalOnlyNotice] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   function applyProfilePhotos(urls: [string | null, string | null, string | null]) {
     prefetchMedia(urls.filter(Boolean) as string[], 3);
@@ -314,6 +319,47 @@ export default function AccountPage() {
     return !slot.removed && !!(slot.preview || slot.url || slot.pendingBlob);
   }
 
+  async function handleWriteWithAi() {
+    if (aiLoading) return;
+    setAiError("");
+    setAiLoading(true);
+    try {
+      const user = getUser();
+      const username =
+        name.trim() ||
+        user?.fullName?.trim() ||
+        phone.trim() ||
+        user?.phone?.trim() ||
+        "LetsMeet user";
+      const content =
+        aboutMe.trim() ||
+        [
+          interests.trim() ? `Interests: ${interests.trim()}` : "",
+          gender ? `Gender: ${gender}` : "",
+          location.trim() ? `Location: ${location.trim()}` : "",
+          "Write a warm, genuine dating bio for me in first person.",
+        ]
+          .filter(Boolean)
+          .join(". ");
+
+      const res = await generateAboutMeAi({ username, content });
+      if (!res.ok) {
+        setAiError(extractError(res.data, "Could not generate bio. Try again."));
+        return;
+      }
+      const generated = normalizeAiAboutMe(res.data);
+      if (!generated) {
+        setAiError("AI returned an empty bio. Add a few notes and try again.");
+        return;
+      }
+      setAboutMe(generated.slice(0, 300));
+    } catch {
+      setAiError("Network error. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   async function handleSave() {
     setError("");
     setSuccess("");
@@ -360,7 +406,7 @@ export default function AccountPage() {
         return;
       }
 
-      setSuccess("Photos updated successfully.");
+      setSuccess("Profile updated successfully.");
       const refreshed = await fetchMyProfile();
       if (refreshed.profile) {
         const p = refreshed.profile;
@@ -441,7 +487,9 @@ export default function AccountPage() {
           <>
             <div className="pt-5 pb-1">
               <h1 className="text-2xl font-bold text-dark">My Profile</h1>
-              <p className="text-sm text-muted mt-0.5">Update your photos — personal details are view only</p>
+              <p className="text-sm text-muted mt-0.5">
+                Update photos and About Me — other details are view only
+              </p>
             </div>
 
             <div className="mt-5">
@@ -566,6 +614,45 @@ export default function AccountPage() {
               </p>
             </div>
 
+            <div className="bg-white rounded-3xl shadow-card border border-border/60 p-4 sm:p-5 mt-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h2 className="text-xs font-bold text-dark uppercase tracking-wider">
+                  About Me
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => void handleWriteWithAi()}
+                  disabled={aiLoading}
+                  className="shrink-0 px-3 py-1.5 rounded-full border-2 border-primary text-primary text-xs font-bold disabled:opacity-50"
+                >
+                  {aiLoading ? "Writing…" : "Write with AI"}
+                </button>
+              </div>
+              <div className="relative">
+                <textarea
+                  value={aboutMe}
+                  onChange={(e) => setAboutMe(e.target.value.slice(0, 300))}
+                  rows={5}
+                  placeholder="Tell people what makes you you…"
+                  className="w-full rounded-2xl border-2 border-border bg-[#F5F5F5] px-4 py-3 text-sm font-medium text-dark placeholder-muted/60 outline-none focus:border-primary resize-none transition-colors leading-relaxed"
+                />
+                <span
+                  className={`absolute bottom-3 right-4 text-[10px] font-medium ${
+                    aboutMe.length >= 300 ? "text-primary" : "text-muted"
+                  }`}
+                >
+                  {aboutMe.length}/300
+                </span>
+              </div>
+              {aiError ? (
+                <p className="text-xs text-rose-600 mt-2">{aiError}</p>
+              ) : (
+                <p className="text-[11px] text-muted mt-2">
+                  Add notes then tap Write with AI, or edit freely. Saved with your photos.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-3 mt-5">
               {localOnlyNotice && <Banner tone="warning">{localOnlyNotice}</Banner>}
               {error && <Banner tone="error">{error}</Banner>}
@@ -578,7 +665,7 @@ export default function AccountPage() {
               disabled={saving}
               className="btn-primary w-full mt-6 shadow-card disabled:opacity-50"
             >
-              {saving ? "Saving photos..." : "Save Photos"}
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </>
         )}

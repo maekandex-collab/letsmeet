@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import {
+  deleteNotification,
   extractError,
   getNotificationList,
   isLoggedIn,
@@ -114,6 +115,16 @@ export default function NotificationsPage() {
     await markNotificationRead(id);
   };
 
+  const removeNotification = async (id: number) => {
+    setItems((prev) => prev.filter((n) => n.id !== id));
+    const res = await deleteNotification(id);
+    if (!res.ok) {
+      const refreshed = await getNotificationList();
+      if (refreshed.ok) setItems(refreshed.data.items ?? []);
+      setError(extractError(res.data, "Could not delete notification."));
+    }
+  };
+
   return (
     <div className="mobile-shell flex flex-col min-h-dvh bg-white">
       <LogoHeader
@@ -141,7 +152,12 @@ export default function NotificationsPage() {
               New
             </p>
             {unread.map((n) => (
-              <NotifRow key={n.id} n={n} onRead={() => markRead(n.id)} />
+              <NotifRow
+                key={n.id}
+                n={n}
+                onRead={() => markRead(n.id)}
+                onDelete={() => void removeNotification(n.id)}
+              />
             ))}
           </div>
         )}
@@ -152,7 +168,12 @@ export default function NotificationsPage() {
               Earlier
             </p>
             {earlier.map((n) => (
-              <NotifRow key={n.id} n={n} onRead={() => markRead(n.id)} />
+              <NotifRow
+                key={n.id}
+                n={n}
+                onRead={() => markRead(n.id)}
+                onDelete={() => void removeNotification(n.id)}
+              />
             ))}
           </div>
         )}
@@ -163,42 +184,71 @@ export default function NotificationsPage() {
   );
 }
 
-function NotifRow({ n, onRead }: { n: Notification; onRead: () => void }) {
+function NotifRow({
+  n,
+  onRead,
+  onDelete,
+}: {
+  n: Notification;
+  onRead: () => void;
+  onDelete: () => void;
+}) {
   const type = notificationType(n.header);
   const icon = iconMap[type];
 
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!n.is_read) onRead();
-      }}
+    <div
       className={`w-full flex items-center gap-3 px-5 py-3.5 text-left ${!n.is_read ? "bg-primary-light/40" : ""}`}
     >
-      <div className="relative shrink-0">
-        <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center text-lg font-bold text-primary">
-          {n.header.charAt(0).toUpperCase()}
+      <button
+        type="button"
+        onClick={() => {
+          if (!n.is_read) onRead();
+        }}
+        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+      >
+        <div className="relative shrink-0">
+          <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center text-lg font-bold text-primary">
+            {n.header.charAt(0).toUpperCase()}
+          </div>
+          <span
+            className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ${icon.bg} flex items-center justify-center border-2 border-white`}
+          >
+            {icon.svg}
+          </span>
         </div>
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ${icon.bg} flex items-center justify-center border-2 border-white`}
-        >
-          {icon.svg}
-        </span>
-      </div>
 
-      <div className="flex-1 min-w-0">
-        <p
-          className={`text-sm leading-snug ${!n.is_read ? "font-semibold text-dark" : "font-medium text-dark/80"}`}
-        >
-          <span className="block text-xs text-muted mb-0.5">{n.header}</span>
-          {n.message}
-        </p>
-        <p className="text-xs text-muted mt-0.5">{formatRelativeTime(n.created_at)}</p>
-      </div>
+        <div className="flex-1 min-w-0">
+          <p
+            className={`text-sm leading-snug ${!n.is_read ? "font-semibold text-dark" : "font-medium text-dark/80"}`}
+          >
+            <span className="block text-xs text-muted mb-0.5">{n.header}</span>
+            {n.message}
+          </p>
+          <p className="text-xs text-muted mt-0.5">{formatRelativeTime(n.created_at)}</p>
+        </div>
 
-      {!n.is_read && (
-        <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
-      )}
-    </button>
+        {!n.is_read && (
+          <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
+        )}
+      </button>
+
+      <button
+        type="button"
+        aria-label="Delete notification"
+        onClick={onDelete}
+        className="w-9 h-9 rounded-full bg-[#F5F5F5] flex items-center justify-center shrink-0 hover:bg-rose-50 transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"
+            stroke="#EF4444"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }

@@ -17,6 +17,8 @@ import {
   linkMatchRoomIds,
   extractRoomIdFromMatchResponse,
   parseProfileCards,
+  unmatchUser,
+  matchIdForUnmatch,
   type ProfileCard,
 } from "@/lib/letsmeet";
 
@@ -88,37 +90,74 @@ function LikeCard({
   );
 }
 
-function MatchCard({ profile }: { profile: ProfileCard }) {
+function MatchCard({
+  profile,
+  onUnmatch,
+  unmatching,
+}: {
+  profile: ProfileCard;
+  onUnmatch: () => void;
+  unmatching: boolean;
+}) {
   return (
-    <Link
-      href={buildChatHref(profile)}
-      onClick={() => stashChatPeer(profile)}
-      className="relative block w-full h-full rounded-[26px] overflow-hidden shadow-card"
+    <div
+      className="relative w-full h-full rounded-[26px] overflow-hidden shadow-card"
       style={{ boxShadow: "0 10px 32px rgba(62,54,237,0.22)" }}
     >
-      <Avatar photo={profile.profile_photo} name={profile.name} fill priority />
-      <div
-        className="absolute inset-0"
-        style={{
-          background: "linear-gradient(180deg, rgba(62,54,237,0) 38%, #3E36ED 100%)",
-        }}
-      />
-      <div className="absolute bottom-0 left-0 right-0 p-5">
-        <p className="text-white font-bold text-lg leading-tight mb-2">{profile.name}</p>
-        <div className="flex items-center gap-2 flex-wrap">
-          {profile.age ? (
-            <span className="text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/45">
-              {profile.age} yr
-            </span>
-          ) : null}
-          {profile.location ? (
-            <span className="text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/45">
-              {profile.location}
-            </span>
-          ) : null}
+      <Link
+        href={buildChatHref(profile)}
+        onClick={() => stashChatPeer(profile)}
+        className="absolute inset-0 block"
+      >
+        <Avatar photo={profile.profile_photo} name={profile.name} fill priority />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "linear-gradient(180deg, rgba(62,54,237,0) 38%, #3E36ED 100%)",
+          }}
+        />
+        <div className="absolute bottom-0 left-0 right-0 p-5 pr-14">
+          <p className="text-white font-bold text-lg leading-tight mb-2">{profile.name}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {profile.age ? (
+              <span className="text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/45">
+                {profile.age} yr
+              </span>
+            ) : null}
+            {profile.location ? (
+              <span className="text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/45">
+                {profile.location}
+              </span>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+
+      <button
+        type="button"
+        aria-label={`Unmatch ${profile.name}`}
+        disabled={unmatching}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onUnmatch();
+        }}
+        className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-black/45 flex items-center justify-center hover:bg-black/60 active:scale-95 transition-transform disabled:opacity-60"
+      >
+        {unmatching ? (
+          <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M18 6L6 18M6 6l12 12"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -128,7 +167,9 @@ export default function MatchesPage() {
   const [likes, setLikes] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [likingId, setLikingId] = useState<number | null>(null);
+  const [unmatchingKey, setUnmatchingKey] = useState<string | null>(null);
   const [likeError, setLikeError] = useState("");
+  const [unmatchError, setUnmatchError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -175,6 +216,45 @@ export default function MatchesPage() {
       setLikeError("Network error. Try again.");
     } finally {
       setLikingId(null);
+    }
+  }
+
+  async function handleUnmatch(profile: ProfileCard) {
+    const matchId = matchIdForUnmatch(profile);
+    if (!matchId || unmatchingKey) return;
+
+    const ok = window.confirm(
+      `Unmatch ${profile.name}? You won’t see each other in matches anymore.`
+    );
+    if (!ok) return;
+
+    setUnmatchError("");
+    setUnmatchingKey(profile.user_id || matchId);
+
+    try {
+      const res = await unmatchUser(matchId);
+      if (!res.ok) {
+        setUnmatchError(extractError(res.data, "Could not unmatch right now."));
+        return;
+      }
+
+      setMatches((prev) =>
+        prev.filter(
+          (p) =>
+            p.user_id !== profile.user_id &&
+            matchIdForUnmatch(p) !== matchId
+        )
+      );
+
+      try {
+        localStorage.removeItem(`lm_chat_${profile.chatroom_id ?? profile.room_id ?? ""}`);
+      } catch {
+        // ignore
+      }
+    } catch {
+      setUnmatchError("Network error. Try again.");
+    } finally {
+      setUnmatchingKey(null);
     }
   }
 
@@ -244,11 +324,21 @@ export default function MatchesPage() {
               </p>
             </div>
           ) : (
-            <ProfileCarousel label="Your matches">
-              {matches.map((profile) => (
-                <MatchCard key={profile.user_id} profile={profile} />
-              ))}
-            </ProfileCarousel>
+            <>
+              {unmatchError ? (
+                <p className="px-5 text-xs text-red-500 mb-2">{unmatchError}</p>
+              ) : null}
+              <ProfileCarousel label="Your matches">
+                {matches.map((profile) => (
+                  <MatchCard
+                    key={profile.user_id}
+                    profile={profile}
+                    unmatching={unmatchingKey === (profile.user_id || matchIdForUnmatch(profile))}
+                    onUnmatch={() => void handleUnmatch(profile)}
+                  />
+                ))}
+              </ProfileCarousel>
+            </>
           )}
         </section>
       </div>

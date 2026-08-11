@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { callWsUrl } from "@/lib/letsmeet";
+import { callWsUrl, getVideoAudio } from "@/lib/letsmeet";
 import {
   clearCallAccepted,
   isCallAccepted,
@@ -33,6 +33,16 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
     credential: "YourStrongPassword123!",
   },
 ];
+
+async function resolveIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const config = await getVideoAudio();
+    if (config.iceServers?.length) return config.iceServers;
+  } catch {
+    // Best-effort — fall back to defaults.
+  }
+  return DEFAULT_ICE_SERVERS;
+}
 
 export const CALL_LIMIT_SECONDS = 10 * 60;
 
@@ -176,8 +186,9 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
     if (peerRef.current) return peerRef.current;
 
     const stream = await initMedia(isAudioOnly);
+    const iceServers = await resolveIceServers();
     const rtcConfig: RTCConfiguration = {
-      iceServers: DEFAULT_ICE_SERVERS,
+      iceServers,
       iceTransportPolicy: "all",
     };
     const pc = new RTCPeerConnection(rtcConfig);

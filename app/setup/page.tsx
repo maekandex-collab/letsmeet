@@ -2,6 +2,12 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { saveDraft, compressImage } from "@/lib/profileDraft";
+import {
+  extractError,
+  generateAboutMeAi,
+  getUser,
+  normalizeAiAboutMe,
+} from "@/lib/letsmeet";
 
 const ORIENTATIONS = ["Straight", "Asexual", "Others"];
 const INTERESTS = [
@@ -34,6 +40,7 @@ const INTERESTS = [
 const MIN_INTERESTS = 4;
 const MAX_INTERESTS = 6;
 const MIN_BIO_WORDS = 20;
+const MAX_BIO_CHARS = 300;
 
 function countWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -49,6 +56,8 @@ export default function SetupPage() {
   const [interests, setInterests] = useState<string[]>([]);
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null]);
   const [bio, setBio] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const bioWords = countWords(bio);
   const bioReady = bioWords >= MIN_BIO_WORDS;
@@ -89,6 +98,44 @@ export default function SetupPage() {
       });
     };
     reader.readAsDataURL(file);
+  }
+
+  async function handleWriteWithAi() {
+    if (aiLoading) return;
+    setAiError("");
+    setAiLoading(true);
+    try {
+      const user = getUser();
+      const username =
+        user?.fullName?.trim() ||
+        user?.phone?.trim() ||
+        "LetsMeet user";
+      const content =
+        bio.trim() ||
+        [
+          interests.length ? `Interests: ${interests.join(", ")}` : "",
+          orientation.length ? `Attraction: ${orientation.join(", ")}` : "",
+          "Write a warm, genuine dating bio for me in first person.",
+        ]
+          .filter(Boolean)
+          .join(". ");
+
+      const res = await generateAboutMeAi({ username, content });
+      if (!res.ok) {
+        setAiError(extractError(res.data, "Could not generate bio. Try again."));
+        return;
+      }
+      const generated = normalizeAiAboutMe(res.data);
+      if (!generated) {
+        setAiError("AI returned an empty bio. Add a few notes and try again.");
+        return;
+      }
+      setBio(generated.slice(0, MAX_BIO_CHARS));
+    } catch {
+      setAiError("Network error. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   function next() {
@@ -256,25 +303,39 @@ export default function SetupPage() {
 
         {step === 3 && (
           <>
-            <h1 className="screen-title mb-1">About Me</h1>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h1 className="screen-title">About Me</h1>
+              <button
+                type="button"
+                onClick={() => void handleWriteWithAi()}
+                disabled={aiLoading}
+                className="shrink-0 mt-1 px-3 py-1.5 rounded-full border-2 border-primary text-primary text-xs font-bold disabled:opacity-50"
+              >
+                {aiLoading ? "Writing…" : "Write with AI"}
+              </button>
+            </div>
             <p className="screen-subtitle mb-6">
               Required — write at least {MIN_BIO_WORDS} words ({bioWords}/{MIN_BIO_WORDS})
             </p>
             <div className="relative">
               <textarea
                 value={bio}
-                onChange={(e) => setBio(e.target.value.slice(0, 300))}
+                onChange={(e) => setBio(e.target.value.slice(0, MAX_BIO_CHARS))}
                 rows={6}
                 placeholder="e.g. I love cooking jollof on weekends, dancing to Afrobeats, and hanging with friends who keep things real. Looking for someone kind and fun…"
                 className="w-full rounded-3xl border-2 border-border bg-border px-5 py-4 text-base font-medium text-dark placeholder-muted/60 outline-none focus:border-primary resize-none transition-colors leading-relaxed"
               />
-              <span className={`absolute bottom-4 right-5 text-xs font-medium ${bio.length >= 300 ? "text-primary" : "text-muted"}`}>
-                {bio.length}/300
+              <span className={`absolute bottom-4 right-5 text-xs font-medium ${bio.length >= MAX_BIO_CHARS ? "text-primary" : "text-muted"}`}>
+                {bio.length}/{MAX_BIO_CHARS}
               </span>
             </div>
-            <p className="text-sm text-muted mt-3 leading-5">
-              A great bio gets 3× more matches. Be yourself — write something genuine!
-            </p>
+            {aiError ? (
+              <p className="text-sm text-rose-600 mt-3">{aiError}</p>
+            ) : (
+              <p className="text-sm text-muted mt-3 leading-5">
+                Tip a few notes in the box, then tap Write with AI — or write it yourself. Be genuine!
+              </p>
+            )}
           </>
         )}
       </div>
