@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
@@ -24,6 +24,9 @@ import {
   type DiscoverEmptyReason,
 } from "@/lib/letsmeet";
 
+const SWIPE_THRESHOLD = 110;
+const EXIT_DISTANCE = 480;
+
 export default function HomePage() {
   const router = useRouter();
   const [cards, setCards] = useState<ProfileCard[]>([]);
@@ -34,6 +37,15 @@ export default function HomePage() {
   const [feedError, setFeedError] = useState("");
   const [emptyReason, setEmptyReason] = useState<DiscoverEmptyReason>(null);
   const [platformUserCount, setPlatformUserCount] = useState<number | undefined>();
+
+  // Live drag offset for the top card (pointer / touch).
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const dragXRef = useRef(0);
+  const pointerStartX = useRef<number | null>(null);
+  const pointerStartY = useRef<number | null>(null);
+  const lockAxis = useRef<"x" | "y" | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
 
   function applyFeedResult(result: Awaited<ReturnType<typeof fetchDiscoverFeed>>) {
     if (!result.ok) {
@@ -109,12 +121,23 @@ export default function HomePage() {
     }
   }, [cards]);
 
+  function resetDrag() {
+    dragXRef.current = 0;
+    setDragX(0);
+    setDragging(false);
+    pointerStartX.current = null;
+    pointerStartY.current = null;
+    lockAxis.current = null;
+    pointerIdRef.current = null;
+  }
+
   async function handleSwipe(dir: "left" | "right") {
     if (animating || cards.length === 0) return;
     const card = cards[0];
     setDirection(dir);
     setAnimating(true);
     setSwipeError("");
+    resetDrag();
 
     const type = dir === "right" ? "like" : "pass";
 
@@ -153,6 +176,71 @@ export default function HomePage() {
     }
   }
 
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (animating || cards.length === 0) return;
+    // Ignore secondary buttons / multi-touch chaos
+    if (e.button !== 0) return;
+    // Don't start a drag from the info link
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("a, button")) return;
+
+    pointerIdRef.current = e.pointerId;
+    pointerStartX.current = e.clientX;
+    pointerStartY.current = e.clientY;
+    lockAxis.current = null;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (pointerIdRef.current !== e.pointerId) return;
+    if (pointerStartX.current == null || pointerStartY.current == null) return;
+    if (animating) return;
+
+    const dx = e.clientX - pointerStartX.current;
+    const dy = e.clientY - pointerStartY.current;
+
+    if (!lockAxis.current) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      // Prefer vertical scroll if the gesture is mostly vertical
+      lockAxis.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (lockAxis.current === "y") return;
+      setDragging(true);
+    }
+
+    if (lockAxis.current !== "x") return;
+
+    dragXRef.current = dx;
+    setDragX(dx);
+  }
+
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (pointerIdRef.current !== e.pointerId) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    const dx = dragXRef.current;
+    const wasHorizontal = lockAxis.current === "x";
+    resetDrag();
+
+    if (!wasHorizontal || animating) return;
+
+    if (dx > SWIPE_THRESHOLD) {
+      void handleSwipe("right");
+    } else if (dx < -SWIPE_THRESHOLD) {
+      void handleSwipe("left");
+    }
+  }
+
+  function onPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    if (pointerIdRef.current !== e.pointerId) return;
+    resetDrag();
+  }
+
+  const stampOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
+
   return (
     <div className="mobile-shell flex flex-col bg-white overflow-hidden" style={{ height: "100dvh" }}>
       <LogoHeader
@@ -163,13 +251,13 @@ export default function HomePage() {
             </svg>
           </Link>
         }
-      />   
+      />
 
       <div className="flex flex-col px-3 sm:px-4 pt-header pb-bottom-nav h-dvh">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold text-dark">Discover</h2>
-            <p className="text-xs text-muted mt-0.5">Find your perfect match</p>
+            <p className="text-xs text-muted mt-0.5">Swipe right to like · left to pass</p>
           </div>
           {cards.length > 0 && (
             <span className="text-xs font-semibold text-muted">{cards.length} nearby</span>
@@ -187,7 +275,7 @@ export default function HomePage() {
         )}
 
         <div
-          className="relative mx-auto w-full max-w-[430px] shrink-0"
+          className="relative mx-auto w-full max-w-[430px] shrink-0 touch-pan-y"
           style={{ height: "clamp(340px, 56dvh, 520px)" }}
         >
           {loading && (
@@ -238,14 +326,25 @@ export default function HomePage() {
               const zIndex = 3 - idx;
 
               if (isTop) {
-                if (direction === "right") transform = "translateX(160%) rotate(28deg)";
-                else if (direction === "left") transform = "translateX(-160%) rotate(-28deg)";
-                else transform = "translateX(0) rotate(0deg) scale(1)";
-                transition = direction
-                  ? "transform 0.42s cubic-bezier(0.25,0.46,0.45,0.94)"
-                  : "transform 0.3s ease";
+                if (direction === "right") {
+                  transform = `translateX(${EXIT_DISTANCE}px) rotate(28deg)`;
+                  transition = "transform 0.42s cubic-bezier(0.25,0.46,0.45,0.94)";
+                } else if (direction === "left") {
+                  transform = `translateX(-${EXIT_DISTANCE}px) rotate(-28deg)`;
+                  transition = "transform 0.42s cubic-bezier(0.25,0.46,0.45,0.94)";
+                } else if (dragging || dragX !== 0) {
+                  const rot = dragX / 18;
+                  transform = `translateX(${dragX}px) rotate(${rot}deg)`;
+                  transition = dragging ? "none" : "transform 0.28s ease";
+                } else {
+                  transform = "translateX(0) rotate(0deg) scale(1)";
+                  transition = "transform 0.3s ease";
+                }
               } else if (isMid) {
-                transform = animating ? "scale(0.97) translateY(8px)" : "scale(0.93) translateY(16px)";
+                const lift = dragging && Math.abs(dragX) > 40;
+                transform = animating || lift
+                  ? "scale(0.97) translateY(8px)"
+                  : "scale(0.93) translateY(16px)";
                 transition = "transform 0.42s ease";
               } else {
                 transform = animating ? "scale(0.93) translateY(16px)" : "scale(0.87) translateY(30px)";
@@ -253,33 +352,50 @@ export default function HomePage() {
               }
 
               const photo = card.profile_photo;
+              const showLike =
+                isTop && (direction === "right" || (dragX > 24 && !direction));
+              const showNope =
+                isTop && (direction === "left" || (dragX < -24 && !direction));
 
               return (
                 <div
                   key={swipeTargetId(card)}
-                  className="absolute inset-x-0 inset-y-0"
+                  className={`absolute inset-x-0 inset-y-0 ${isTop ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
                   style={{ transform, transition, zIndex, willChange: "transform" }}
+                  onPointerDown={isTop ? onPointerDown : undefined}
+                  onPointerMove={isTop ? onPointerMove : undefined}
+                  onPointerUp={isTop ? onPointerUp : undefined}
+                  onPointerCancel={isTop ? onPointerCancel : undefined}
                 >
-                  <div className="relative rounded-[28px] overflow-hidden h-full bg-[#151515]" style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+                  <div
+                    className="relative rounded-[28px] overflow-hidden h-full bg-[#151515]"
+                    style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}
+                  >
                     <ProfilePhoto
                       photo={photo}
                       alt={card.name}
                       priority={isTop}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none" />
 
-                    {isTop && direction === "right" && (
-                      <div className="absolute top-10 left-6 px-4 py-2 rounded-xl border-[3px] border-green-400 -rotate-12">
+                    {showLike && (
+                      <div
+                        className="absolute top-10 left-6 px-4 py-2 rounded-xl border-[3px] border-green-400 -rotate-12 pointer-events-none"
+                        style={{ opacity: direction ? 1 : stampOpacity }}
+                      >
                         <span className="text-green-400 font-black text-2xl tracking-wider">LIKE</span>
                       </div>
                     )}
-                    {isTop && direction === "left" && (
-                      <div className="absolute top-10 right-6 px-4 py-2 rounded-xl border-[3px] border-red-400 rotate-12">
+                    {showNope && (
+                      <div
+                        className="absolute top-10 right-6 px-4 py-2 rounded-xl border-[3px] border-red-400 rotate-12 pointer-events-none"
+                        style={{ opacity: direction ? 1 : stampOpacity }}
+                      >
                         <span className="text-red-400 font-black text-2xl tracking-wider">NOPE</span>
                       </div>
                     )}
 
-                    <div className="absolute bottom-0 left-0 right-0 p-5 pb-6">
+                    <div className="absolute bottom-0 left-0 right-0 p-5 pb-6 pointer-events-none">
                       <div className="flex items-end justify-between">
                         <div>
                           <h2 className="text-[1.55rem] font-bold text-white leading-tight">
@@ -294,15 +410,19 @@ export default function HomePage() {
                             </div>
                           )}
                         </div>
-                        <Link
-                          href={`/profile-single?id=${encodeURIComponent(card.user_id)}&uid=${encodeURIComponent(swipeTargetId(card))}&source=discover`}
-                          className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0"
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2"/>
-                            <path d="M12 16v-5M12 8v-.01" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-                          </svg>
-                        </Link>
+                        {isTop && (
+                          <Link
+                            href={`/profile-single?id=${encodeURIComponent(card.user_id)}&uid=${encodeURIComponent(swipeTargetId(card))}&source=discover`}
+                            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 pointer-events-auto"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            aria-label={`View ${card.name}'s profile`}
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                              <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2"/>
+                              <path d="M12 16v-5M12 8v-.01" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+                            </svg>
+                          </Link>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -312,10 +432,12 @@ export default function HomePage() {
         </div>
 
         {!loading && cards.length > 0 && (
-          <div className="flex items-center justify-center gap-5 mt-4 shrink-0">
+          <div className="flex items-center justify-center gap-8 mt-4 shrink-0">
             <button
+              type="button"
               onClick={() => handleSwipe("left")}
               disabled={animating}
+              aria-label="Pass"
               className="w-14 h-14 rounded-full border-2 border-border bg-white shadow-card flex items-center justify-center active:scale-90 transition-transform disabled:opacity-60"
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -324,8 +446,10 @@ export default function HomePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleSwipe("right")}
               disabled={animating}
+              aria-label="Like"
               className="w-[68px] h-[68px] rounded-full bg-primary flex items-center justify-center active:scale-90 transition-transform disabled:opacity-60"
               style={{ boxShadow: "0 8px 24px rgba(247,89,245,0.45)" }}
             >
@@ -333,16 +457,6 @@ export default function HomePage() {
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="white" />
               </svg>
             </button>
-
-            <Link
-              href={cards[0] ? `/profile-single?id=${encodeURIComponent(cards[0].user_id)}&uid=${encodeURIComponent(swipeTargetId(cards[0]))}&source=discover` : "/home"}
-              className="w-14 h-14 rounded-full border-2 border-border bg-white shadow-card flex items-center justify-center active:scale-90 transition-transform"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="#12151C" strokeWidth="2"/>
-                <path d="M12 16v-5M12 8v-.01" stroke="#12151C" strokeWidth="2.2" strokeLinecap="round"/>
-              </svg>
-            </Link>
           </div>
         )}
       </div>
@@ -351,4 +465,3 @@ export default function HomePage() {
     </div>
   );
 }
-

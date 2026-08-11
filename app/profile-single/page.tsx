@@ -9,6 +9,14 @@ import {
   swipe,
   markSwipedTarget,
   prefetchMedia,
+  analyzeMatchCompatibility,
+  buildMatchComparisonContent,
+  normalizeAiAnalysis,
+  extractError,
+  getUser,
+  getLocalProfileDraft,
+  getLoginProfileCache,
+  buildOwnProfileFromLoginCache,
   type SingleProfile,
   type ProfileCard,
 } from "@/lib/letsmeet";
@@ -40,6 +48,9 @@ function ProfileContent() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [analysis, setAnalysis] = useState("");
 
   useEffect(() => {
     if (!hashId) {
@@ -93,6 +104,69 @@ function ProfileContent() {
       router.back();
     } finally {
       setActing(false);
+    }
+  }
+
+  async function handleCompare() {
+    if (!profile || aiLoading) return;
+    setAiError("");
+    setAiLoading(true);
+    try {
+      const user = getUser();
+      const draft = getLocalProfileDraft();
+      const cache = getLoginProfileCache();
+      const own = buildOwnProfileFromLoginCache(cache, user);
+
+      const me = {
+        name:
+          draft?.full_name?.trim() ||
+          own?.name ||
+          user?.fullName?.trim() ||
+          cache?.full_name?.trim() ||
+          "",
+        gender: draft?.gender || own?.gender || cache?.gender || "",
+        about_me: draft?.about_me || "",
+        location: draft?.location || "",
+        religion: draft?.religion ?? null,
+        interests: draft?.interests || "",
+        sexual_orientation: draft?.sexual_orientation || "",
+        age: own?.date_of_birth ?? null,
+      };
+
+      const them = {
+        name: profile.name,
+        gender: profile.gender,
+        about_me: profile.about_me,
+        location: profile.location,
+        religion: profile.religion,
+        interests: profile.interests,
+        sexual_orientation: profile.sexual_orientation,
+        age: displayAge(profile.date_of_birth),
+      };
+
+      const username =
+        me.name || user?.fullName?.trim() || user?.phone?.trim() || "LetsMeet user";
+      const content = buildMatchComparisonContent({ me, them });
+      const res = await analyzeMatchCompatibility({ username, content });
+      if (!res.ok) {
+        setAiError(
+          extractError(res.data, "Compatibility analysis is unavailable right now.")
+        );
+        setAnalysis("");
+        return;
+      }
+      const text = normalizeAiAnalysis(res.data);
+      if (!text) {
+        setAiError("No analysis came back. Try again in a moment.");
+        setAnalysis("");
+        return;
+      }
+      setAnalysis(text);
+    } catch {
+      setAiError("Network error. Please try again.");
+      setAnalysis("");
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -204,6 +278,33 @@ function ProfileContent() {
                 </div>
               </div>
             )}
+
+            <div className="mb-6 rounded-3xl border border-border bg-[#FAFAFA] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-dark">Compatibility</h3>
+                  <p className="text-xs text-muted mt-1 leading-5">
+                    AI comparison of your profiles — shared interests, lifestyle fit, and friction.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCompare()}
+                  disabled={aiLoading}
+                  className="shrink-0 px-3 py-1.5 rounded-full border-2 border-primary text-primary text-xs font-bold disabled:opacity-50"
+                >
+                  {aiLoading ? "Analyzing…" : analysis ? "Refresh" : "Compare"}
+                </button>
+              </div>
+              {aiError && (
+                <p className="text-sm text-rose-600 mt-3">{aiError}</p>
+              )}
+              {analysis && !aiError && (
+                <p className="text-sm text-muted leading-6 mt-3 whitespace-pre-wrap">
+                  {analysis}
+                </p>
+              )}
+            </div>
           </>
         )}
       </div>

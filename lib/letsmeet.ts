@@ -52,7 +52,7 @@ export interface SessionUser {
 
 const HASHED_USER_ID_KEY = "lm_hashed_user_id";
 
-/** UUID-style id used by GET /single/user/profile (not the numeric swipe id). */
+/** Profile lookup id for PUT /single/user/profile (hash or numeric user_id). */
 export function extractHashedUserId(data: unknown): string | null {
   if (!data || typeof data !== "object") return null;
   const obj = data as Record<string, unknown>;
@@ -79,17 +79,30 @@ export function storeHashedUserId(id: string): void {
 
 export function getStoredHashedUserId(): string | null {
   const user = getUser();
+  const sessionPhone = normalizePhone(user?.phone ?? "");
+
+  const isPhoneDisguised = (value: string) => {
+    if (!sessionPhone || !/^\d+$/.test(value)) return false;
+    return (
+      value === sessionPhone ||
+      value.endsWith(sessionPhone) ||
+      sessionPhone.endsWith(value)
+    );
+  };
+
   const fromUser = user?.hashedUserId?.trim();
-  if (fromUser && !/^\d+$/.test(fromUser)) return fromUser;
+  if (fromUser && !isPhoneDisguised(fromUser)) return fromUser;
+
   if (typeof window === "undefined") return null;
   try {
     const stored = window.localStorage.getItem(HASHED_USER_ID_KEY)?.trim();
-    if (stored && /^\d+$/.test(stored)) {
-      // Legacy bug: phone tails were stored as hashed ids.
+    if (!stored) return null;
+    if (isPhoneDisguised(stored)) {
+      // Legacy bug: phone numbers were stored as profile lookup ids.
       window.localStorage.removeItem(HASHED_USER_ID_KEY);
       return null;
     }
-    return stored || null;
+    return stored;
   } catch {
     return null;
   }
@@ -1234,6 +1247,50 @@ export function profileImageUrlsFromCache(
   return [cache.profile_image, cache.image1, cache.image2];
 }
 
+/**
+ * Build an own-profile view from the login response cache + session.
+ * Needed because PUT /single/user/profile rejects the JWT internal user_id
+ * (e.g. 653 → "User does not exist") while login already returns photos.
+ */
+export function buildOwnProfileFromLoginCache(
+  cache: LoginProfileCache | null = getLoginProfileCache(),
+  user: SessionUser | null = getUser()
+): SingleProfile | null {
+  if (!cache && !user) return null;
+
+  const name = (cache?.full_name || user?.fullName || "").trim();
+  const gender = (cache?.gender || "").trim();
+  const profile_image = normalizeMediaInput(cache?.profile_image ?? null);
+  const image1 = normalizeMediaInput(cache?.image1 ?? null);
+  const image2 = normalizeMediaInput(cache?.image2 ?? null);
+
+  if (!name && !gender && !profile_image && !image1 && !image2) return null;
+
+  let age = 0;
+  const dob = user?.dateOfBirth?.trim();
+  if (dob) {
+    const parsed = Date.parse(dob);
+    if (!Number.isNaN(parsed)) {
+      const years = Math.floor((Date.now() - parsed) / (365.25 * 24 * 60 * 60 * 1000));
+      if (years > 0 && years < 120) age = years;
+    }
+  }
+
+  return {
+    name,
+    date_of_birth: age,
+    about_me: "",
+    profile_image,
+    image1,
+    image2,
+    location: "",
+    religion: null,
+    gender,
+    sexual_orientation: "",
+    interests: "",
+  };
+}
+
 export function profileImageUrlsFromDraft(
   draft: LocalProfileDraft | null | undefined
 ): [string | null, string | null, string | null] {
@@ -1301,20 +1358,26 @@ export function persistLoginSession(
   extras?: Partial<SessionUser>
 ): void {
   const hash = extractHashedUserId(loginData);
+  const profileLookupId =
+    hash ??
+    (loginData.user_id > 0 ? String(loginData.user_id) : null);
+
   setSession(loginData.token, {
     userId: loginData.user_id,
     fullName: loginData.full_name ?? extras?.fullName,
     phone: loginData.phone ?? phone,
     dateOfBirth: loginData.date_of_birth ?? extras?.dateOfBirth,
     profileCompleted: loginData.profile_completed,
-    hashedUserId: hash ?? extras?.hashedUserId,
+    hashedUserId: profileLookupId ?? extras?.hashedUserId,
   });
-  if (hash) storeHashedUserId(hash);
-  else if (typeof window !== "undefined") {
+  if (profileLookupId) {
+    storeHashedUserId(profileLookupId);
+  } else if (typeof window !== "undefined") {
     // Drop any stale phone-number "hash" left from older app versions.
     try {
       const stale = window.localStorage.getItem(HASHED_USER_ID_KEY);
-      if (stale && /^\d+$/.test(stale)) {
+      const sessionPhone = normalizePhone(loginData.phone ?? phone);
+      if (stale && sessionPhone && (stale === sessionPhone || stale.endsWith(sessionPhone))) {
         window.localStorage.removeItem(HASHED_USER_ID_KEY);
       }
     } catch {
@@ -2002,29 +2065,103 @@ export async function getVideoAudio(force = false): Promise<VideoAudioConfig> {
   return videoAudioInflight;
 }
 
-/** AI About Me — `POST /ai` with `{ username, content }` (no auth per OpenAPI). */
-export function generateAboutMeAi(body: { username: string; content: string }) {
+/**
+ * Match compatibility AI — `POST /ai` with `{ username, content }`.
+ * Backend uses this for comparison analysis between the signed-in user and a match.
+ */
+export function analyzeMatchCompatibility(body: {
+  username: string;
+  content: string;
+}) {
   return request<unknown>("/ai", {
     method: "POST",
     body: {
       username: body.username.trim(),
       content: body.content.trim(),
     },
+    auth: true,
   });
 }
 
-/** Pull a bio string from opaque AI response shapes. */
-export function normalizeAiAboutMe(data: unknown): string {
+/** @deprecated Use analyzeMatchCompatibility — AI is for match comparison, not bios. */
+export function generateAboutMeAi(body: { username: string; content: string }) {
+  return analyzeMatchCompatibility(body);
+}
+
+/** Build the comparison payload content from two profiles. */
+export function buildMatchComparisonContent(input: {
+  me: {
+    name?: string;
+    gender?: string;
+    about_me?: string;
+    location?: string;
+    religion?: string | null;
+    interests?: string;
+    sexual_orientation?: string;
+    age?: number | string | null;
+  };
+  them: {
+    name?: string;
+    gender?: string;
+    about_me?: string;
+    location?: string;
+    religion?: string | null;
+    interests?: string;
+    sexual_orientation?: string;
+    age?: number | string | null;
+  };
+}): string {
+  const fmt = (p: typeof input.me, label: string) => {
+    const lines = [
+      `${label}: ${p.name || "Unknown"}`,
+      p.age != null && String(p.age).trim() ? `Age: ${p.age}` : "",
+      p.gender ? `Gender: ${p.gender}` : "",
+      p.sexual_orientation ? `Orientation: ${p.sexual_orientation}` : "",
+      p.religion ? `Religion: ${p.religion}` : "",
+      p.location ? `Location: ${p.location}` : "",
+      p.interests ? `Interests: ${p.interests}` : "",
+      p.about_me ? `About: ${p.about_me}` : "",
+    ].filter(Boolean);
+    return lines.join("\n");
+  };
+
+  return [
+    "Provide a match compatibility comparison analysis between these two people.",
+    "Cover shared interests, lifestyle fit, possible friction, and a clear compatibility summary.",
+    "",
+    fmt(input.me, "Me"),
+    "",
+    fmt(input.them, "Them"),
+  ].join("\n");
+}
+
+/** Pull analysis text from opaque AI response shapes. */
+export function normalizeAiAnalysis(data: unknown): string {
   if (typeof data === "string") return data.trim();
   if (!data || typeof data !== "object") return "";
   const obj = data as Record<string, unknown>;
-  for (const key of ["about_me", "content", "message", "text", "result", "bio", "generated"]) {
+  for (const key of [
+    "analysis",
+    "comparison",
+    "compatibility",
+    "content",
+    "message",
+    "text",
+    "result",
+    "about_me",
+    "generated",
+  ]) {
     const value = obj[key];
     if (typeof value === "string" && value.trim()) return value.trim();
   }
-  if (obj.data != null) return normalizeAiAboutMe(obj.data);
-  if (obj.response != null) return normalizeAiAboutMe(obj.response);
+  if (obj.data != null) return normalizeAiAnalysis(obj.data);
+  if (obj.response != null) return normalizeAiAnalysis(obj.response);
   return "";
+}
+
+/** @deprecated Use normalizeAiAnalysis */
+export function normalizeAiAboutMe(data: unknown): string {
+  return normalizeAiAnalysis(data);
 }
 
 export function getSingleProfile(userId: string) {
@@ -2140,7 +2277,7 @@ export function clearStoredHashedUserId(): void {
   }
 }
 
-/** Fetch the signed-in user's profile via GET /single/user/profile. */
+/** Fetch the signed-in user's profile via PUT /single/user/profile. */
 export async function fetchMyProfile(): Promise<{
   ok: boolean;
   profile: SingleProfile | null;
@@ -2149,17 +2286,35 @@ export async function fetchMyProfile(): Promise<{
   const user = getUser();
   if (!user) return { ok: false, profile: null, error: "Not signed in." };
 
+  const sessionPhone = normalizePhone(user.phone ?? "");
+
   const candidates: string[] = [];
-  const push = (id?: string | null) => {
-    const v = (id ?? "").trim();
+  const push = (id?: string | number | null, opts?: { allowNumeric?: boolean }) => {
+    if (id == null) return;
+    const v = String(id).trim();
     if (!v || candidates.includes(v)) return;
-    // Never use phone numbers as profile ids — they resolve other users' public profiles.
-    if (/^\d{7,}$/.test(v)) return;
+
+    // Never use the account phone as a profile lookup id.
+    if (sessionPhone && (v === sessionPhone || v.endsWith(sessionPhone) || sessionPhone.endsWith(v))) {
+      return;
+    }
+
+    // Untrusted long numerics (legacy phone-tail bug) — only allow when
+    // the id comes from JWT / session userId (opts.allowNumeric).
+    if (/^\d{7,}$/.test(v) && !opts?.allowNumeric) return;
+
     candidates.push(v);
   };
 
-  push(getStoredHashedUserId());
-  push(user.hashedUserId);
+  push(getStoredHashedUserId(), { allowNumeric: true });
+  push(user.hashedUserId, { allowNumeric: true });
+
+  // Feed / public profile ids are long numerics (10+ digits). The JWT
+  // `user_id` is an internal DB id (e.g. 653) and returns
+  // {"message":"User does not exist"} on /single/user/profile — skip short ids.
+  if (user.userId > 0 && String(user.userId).length >= 7) {
+    push(user.userId, { allowNumeric: true });
+  }
 
   const token = getToken();
   if (token) {
@@ -2173,7 +2328,13 @@ export async function fetchMyProfile(): Promise<{
         ) as Record<string, unknown>;
         for (const key of ["user_hash", "hash", "uuid", "profile_id", "hashed_user_id"]) {
           const v = payload[key];
-          if (typeof v === "string") push(v);
+          if (typeof v === "string") push(v, { allowNumeric: true });
+        }
+        const jwtUserId = payload.user_id ?? payload.sub;
+        if (typeof jwtUserId === "number" || typeof jwtUserId === "string") {
+          if (String(jwtUserId).trim().length >= 7) {
+            push(jwtUserId, { allowNumeric: true });
+          }
         }
       }
     } catch {
@@ -2192,8 +2353,8 @@ export async function fetchMyProfile(): Promise<{
       if (getStoredHashedUserId() === id) clearStoredHashedUserId();
       continue;
     }
-    const looksHashed = !/^\d+$/.test(id) && id.length >= 8;
-    if (looksHashed) storeHashedUserId(id);
+    // Persist whatever id successfully resolved *our* profile for next time.
+    storeHashedUserId(id);
     return { ok: true, profile };
   }
 
@@ -2202,17 +2363,24 @@ export async function fetchMyProfile(): Promise<{
     for (const id of candidates) {
       const profile = await tryLoadSingleProfile(id, { persistHash: false });
       if (profile) {
-        const looksHashed = !/^\d+$/.test(id) && id.length >= 8;
-        if (looksHashed) storeHashedUserId(id);
+        storeHashedUserId(id);
         return { ok: true, profile };
       }
     }
   }
 
+  // Login already returns name/gender/photos. Use that when the public
+  // profile id is unknown (common: JWT user_id ≠ swipe/profile user_id).
+  const fromLogin = buildOwnProfileFromLoginCache();
+  if (fromLogin && (fromLogin.profile_image || fromLogin.image1 || fromLogin.gender || fromLogin.name)) {
+    return { ok: true, profile: fromLogin };
+  }
+
   return {
     ok: false,
     profile: null,
-    error: "Could not load your profile. Basic account info is shown below.",
+    error:
+      "Could not load your full profile from the server. Sign out and sign back in to refresh your photos, or upload them below.",
   };
 }
 

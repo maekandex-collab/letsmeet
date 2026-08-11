@@ -26,9 +26,6 @@ import {
   profileMatchesSession,
   saveAccountProfile,
   clearMediaCache,
-  generateAboutMeAi,
-  normalizeAiAboutMe,
-  extractError,
 } from "@/lib/letsmeet";
 
 const SETTINGS = [
@@ -182,8 +179,6 @@ export default function AccountPage() {
   const [notice, setNotice] = useState("");
   const [success, setSuccess] = useState("");
   const [localOnlyNotice, setLocalOnlyNotice] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
 
   function applyProfilePhotos(urls: [string | null, string | null, string | null]) {
     prefetchMedia(urls.filter(Boolean) as string[], 3);
@@ -303,6 +298,10 @@ export default function AccountPage() {
         }
       } else if (result.error && !hasEssentialsFromCache) {
         setNotice(result.error);
+      } else if (result.profile && !result.profile.profile_image && !result.profile.image1) {
+        setNotice(
+          "We loaded your account, but photos were missing from this session. Sign out and sign back in to refresh them, or upload below."
+        );
       }
       setLoading(false);
     })();
@@ -317,47 +316,6 @@ export default function AccountPage() {
 
   function slotHasPhoto(slot: ProfilePhotoSlot): boolean {
     return !slot.removed && !!(slot.preview || slot.url || slot.pendingBlob);
-  }
-
-  async function handleWriteWithAi() {
-    if (aiLoading) return;
-    setAiError("");
-    setAiLoading(true);
-    try {
-      const user = getUser();
-      const username =
-        name.trim() ||
-        user?.fullName?.trim() ||
-        phone.trim() ||
-        user?.phone?.trim() ||
-        "LetsMeet user";
-      const content =
-        aboutMe.trim() ||
-        [
-          interests.trim() ? `Interests: ${interests.trim()}` : "",
-          gender ? `Gender: ${gender}` : "",
-          location.trim() ? `Location: ${location.trim()}` : "",
-          "Write a warm, genuine dating bio for me in first person.",
-        ]
-          .filter(Boolean)
-          .join(". ");
-
-      const res = await generateAboutMeAi({ username, content });
-      if (!res.ok) {
-        setAiError(extractError(res.data, "Could not generate bio. Try again."));
-        return;
-      }
-      const generated = normalizeAiAboutMe(res.data);
-      if (!generated) {
-        setAiError("AI returned an empty bio. Add a few notes and try again.");
-        return;
-      }
-      setAboutMe(generated.slice(0, 300));
-    } catch {
-      setAiError("Network error. Please try again.");
-    } finally {
-      setAiLoading(false);
-    }
   }
 
   async function handleSave() {
@@ -619,14 +577,6 @@ export default function AccountPage() {
                 <h2 className="text-xs font-bold text-dark uppercase tracking-wider">
                   About Me
                 </h2>
-                <button
-                  type="button"
-                  onClick={() => void handleWriteWithAi()}
-                  disabled={aiLoading}
-                  className="shrink-0 px-3 py-1.5 rounded-full border-2 border-primary text-primary text-xs font-bold disabled:opacity-50"
-                >
-                  {aiLoading ? "Writing…" : "Write with AI"}
-                </button>
               </div>
               <div className="relative">
                 <textarea
@@ -644,13 +594,9 @@ export default function AccountPage() {
                   {aboutMe.length}/300
                 </span>
               </div>
-              {aiError ? (
-                <p className="text-xs text-rose-600 mt-2">{aiError}</p>
-              ) : (
-                <p className="text-[11px] text-muted mt-2">
-                  Add notes then tap Write with AI, or edit freely. Saved with your photos.
-                </p>
-              )}
+              <p className="text-[11px] text-muted mt-2">
+                Saved with your photos when you tap Save Changes.
+              </p>
             </div>
 
             <div className="space-y-3 mt-5">
