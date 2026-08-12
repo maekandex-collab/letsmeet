@@ -295,13 +295,14 @@ export default function AccountPage() {
           if (p.date_of_birth > 0 && p.date_of_birth < 120) {
             setProfileAge(p.date_of_birth);
           }
+          if (!p.profile_image && !p.image1) {
+            setNotice(
+              "We loaded your account, but photos were missing from this session. Sign out and sign back in to refresh them, or upload below."
+            );
+          }
         }
       } else if (result.error && !hasEssentialsFromCache) {
         setNotice(result.error);
-      } else if (result.profile && !result.profile.profile_image && !result.profile.image1) {
-        setNotice(
-          "We loaded your account, but photos were missing from this session. Sign out and sign back in to refresh them, or upload below."
-        );
       }
       setLoading(false);
     })();
