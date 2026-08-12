@@ -24,8 +24,10 @@ import {
   type DiscoverEmptyReason,
 } from "@/lib/letsmeet";
 
-const SWIPE_THRESHOLD = 110;
+const SWIPE_THRESHOLD = 90;
 const EXIT_DISTANCE = 480;
+/** Ignore tiny jitter before deciding swipe vs scroll. */
+const AXIS_LOCK_PX = 6;
 
 export default function HomePage() {
   const router = useRouter();
@@ -188,7 +190,11 @@ export default function HomePage() {
     pointerStartX.current = e.clientX;
     pointerStartY.current = e.clientY;
     lockAxis.current = null;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Some WebViews reject capture; move/up still work on the element.
+    }
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -200,15 +206,19 @@ export default function HomePage() {
     const dy = e.clientY - pointerStartY.current;
 
     if (!lockAxis.current) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      // Prefer vertical scroll if the gesture is mostly vertical
-      lockAxis.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+      // Discover cards are horizontal-first: bias toward X so a slight finger
+      // wobble doesn't permanently lock the gesture to vertical scroll.
+      lockAxis.current =
+        Math.abs(dx) >= Math.abs(dy) * 0.65 ? "x" : "y";
       if (lockAxis.current === "y") return;
       setDragging(true);
     }
 
     if (lockAxis.current !== "x") return;
 
+    // Stop the browser from scrolling / cancelling the gesture mid-swipe.
+    e.preventDefault();
     dragXRef.current = dx;
     setDragX(dx);
   }
@@ -216,7 +226,9 @@ export default function HomePage() {
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     if (pointerIdRef.current !== e.pointerId) return;
     try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
     } catch {
       // ignore
     }
@@ -237,6 +249,18 @@ export default function HomePage() {
   function onPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
     if (pointerIdRef.current !== e.pointerId) return;
     resetDrag();
+  }
+
+  function onLostPointerCapture() {
+    // iOS / in-app browsers can revoke capture without a clean up event.
+    if (pointerIdRef.current == null) return;
+    if (animating) return;
+    const dx = dragXRef.current;
+    const wasHorizontal = lockAxis.current === "x";
+    resetDrag();
+    if (!wasHorizontal) return;
+    if (dx > SWIPE_THRESHOLD) void handleSwipe("right");
+    else if (dx < -SWIPE_THRESHOLD) void handleSwipe("left");
   }
 
   const stampOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
@@ -275,8 +299,8 @@ export default function HomePage() {
         )}
 
         <div
-          className="relative mx-auto w-full max-w-[430px] shrink-0 touch-pan-y"
-          style={{ height: "clamp(340px, 56dvh, 520px)" }}
+          className="relative mx-auto w-full max-w-[430px] shrink-0 overflow-hidden touch-none"
+          style={{ height: "clamp(340px, 56dvh, 520px)", touchAction: "none" }}
         >
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -360,12 +384,19 @@ export default function HomePage() {
               return (
                 <div
                   key={swipeTargetId(card)}
-                  className={`absolute inset-x-0 inset-y-0 ${isTop ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
-                  style={{ transform, transition, zIndex, willChange: "transform" }}
+                  className={`absolute inset-x-0 inset-y-0 ${isTop ? "cursor-grab active:cursor-grabbing touch-none select-none" : "pointer-events-none"}`}
+                  style={{
+                    transform,
+                    transition,
+                    zIndex,
+                    willChange: "transform",
+                    touchAction: isTop ? "none" : undefined,
+                  }}
                   onPointerDown={isTop ? onPointerDown : undefined}
                   onPointerMove={isTop ? onPointerMove : undefined}
                   onPointerUp={isTop ? onPointerUp : undefined}
                   onPointerCancel={isTop ? onPointerCancel : undefined}
+                  onLostPointerCapture={isTop ? onLostPointerCapture : undefined}
                 >
                   <div
                     className="relative rounded-[28px] overflow-hidden h-full bg-[#151515]"

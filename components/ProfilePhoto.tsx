@@ -49,9 +49,10 @@ export default function ProfilePhoto({ photo, alt, priority = false, fit = "cont
         fetchPriority={priority ? "high" : "auto"}
         onLoad={onLoad}
         onError={onError}
-        className={`absolute inset-0 w-full h-full object-center transition-opacity duration-200 ${
+        className={`absolute inset-0 w-full h-full object-center transition-opacity duration-200 pointer-events-none select-none ${
           fit === "cover" ? "object-cover" : "object-contain"
         } ${loaded ? "opacity-100" : "opacity-0"}`}
+        draggable={false}
       />
     </>
   );
