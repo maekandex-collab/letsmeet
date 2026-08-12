@@ -13,6 +13,10 @@ import {
   storeHashedUserId,
   verifyProfileOnBackend,
   isProfileAlreadyCompletedError,
+  storeLoginProfileCache,
+  getLoginProfileCache,
+  storeLocalProfileDraft,
+  getLocalProfileDraft,
 } from "@/lib/letsmeet";
 import { getDraft, clearDraft, dataUrlToBlob } from "@/lib/profileDraft";
 
@@ -63,6 +67,40 @@ export default function ProfileSetupPage() {
   }
 
   async function finishOnboarding(draftReligion?: string) {
+    const draft = getDraft();
+    // Keep bio/details available on Account after onboarding clears the draft.
+    storeLoginProfileCache({
+      ...(getLoginProfileCache() ?? {
+        profile_image: null,
+        image1: null,
+        image2: null,
+      }),
+      about_me: draft.about_me?.trim() || undefined,
+      location: draft.location?.trim() || undefined,
+      interests: draft.interests?.length ? draft.interests.join(", ") : undefined,
+      sexual_orientation: draft.sexual_orientation,
+      religion: draftReligion ?? draft.religion ?? null,
+      gender: draft.gender || getLoginProfileCache()?.gender,
+      full_name: getUser()?.fullName ?? getLoginProfileCache()?.full_name,
+    });
+    if (draft.about_me?.trim()) {
+      storeLocalProfileDraft({
+        ...(getLocalProfileDraft() ?? {
+          profile_image: null,
+          image1: null,
+          image2: null,
+          savedAt: Date.now(),
+        }),
+        about_me: draft.about_me.trim(),
+        location: draft.location?.trim(),
+        interests: draft.interests?.length ? draft.interests.join(", ") : undefined,
+        sexual_orientation: draft.sexual_orientation,
+        religion: draftReligion ?? draft.religion ?? null,
+        gender: draft.gender,
+        full_name: getUser()?.fullName,
+        savedAt: Date.now(),
+      });
+    }
     if (draftReligion) storeUserReligion(draftReligion);
     updateUser({ profileCompleted: true });
     clearDraft();

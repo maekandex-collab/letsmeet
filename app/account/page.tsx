@@ -27,6 +27,7 @@ import {
   saveAccountProfile,
   clearMediaCache,
 } from "@/lib/letsmeet";
+import { getDraft } from "@/lib/profileDraft";
 
 const SETTINGS = [
   {
@@ -193,6 +194,23 @@ export default function AccountPage() {
    */
   const applyLoginCacheFallback = useCallback((): boolean => {
     const sessionName = (getUser()?.fullName ?? "").trim();
+    const onboardingDraft = getDraft();
+    if (onboardingDraft.about_me?.trim()) {
+      setAboutMe((prev) => prev || onboardingDraft.about_me!.trim());
+    }
+    if (onboardingDraft.location?.trim()) {
+      setLocation((prev) => prev || onboardingDraft.location!.trim());
+    }
+    if (onboardingDraft.interests?.length) {
+      setInterests((prev) => prev || onboardingDraft.interests!.join(", "));
+    }
+    if (onboardingDraft.sexual_orientation) {
+      setSexualOrientation((prev) => prev || onboardingDraft.sexual_orientation!);
+    }
+    if (onboardingDraft.religion) {
+      setReligion((prev) => prev || onboardingDraft.religion!);
+    }
+
     const draft = getLocalProfileDraft();
     if (draft) {
       if (draft.full_name && profileMatchesSession(draft.full_name, sessionName)) {
@@ -226,6 +244,13 @@ export default function AccountPage() {
       const g = cache.gender.toLowerCase();
       setGender((prev) => prev || g || "");
     }
+    if (cache.about_me?.trim()) setAboutMe((prev) => prev || cache.about_me!.trim());
+    if (cache.location?.trim()) setLocation((prev) => prev || cache.location!.trim());
+    if (cache.interests?.trim()) setInterests((prev) => prev || cache.interests!.trim());
+    if (cache.sexual_orientation) {
+      setSexualOrientation((prev) => prev || cache.sexual_orientation!);
+    }
+    if (cache.religion) setReligion((prev) => prev || cache.religion!);
     const urls = profileImageUrlsFromCache(cache);
     applyProfilePhotos(urls);
     return Boolean(cache.gender) && urls.some(Boolean);
@@ -280,6 +305,14 @@ export default function AccountPage() {
           if (displayName) setName(displayName);
           if (p.gender) setGender(p.gender.toLowerCase());
           if (p.about_me) setAboutMe(p.about_me);
+          else {
+            const cachedAbout =
+              getLocalProfileDraft()?.about_me?.trim() ||
+              getLoginProfileCache()?.about_me?.trim() ||
+              getDraft().about_me?.trim() ||
+              "";
+            if (cachedAbout) setAboutMe(cachedAbout);
+          }
           if (p.location) setLocation(p.location);
           if (p.interests) setInterests(p.interests);
           if (p.sexual_orientation) setSexualOrientation(p.sexual_orientation);
@@ -291,6 +324,16 @@ export default function AccountPage() {
             image2: p.image2 ?? null,
             gender: p.gender,
             full_name: displayName || p.name,
+            about_me:
+              p.about_me?.trim() ||
+              getLocalProfileDraft()?.about_me?.trim() ||
+              getLoginProfileCache()?.about_me?.trim() ||
+              getDraft().about_me?.trim() ||
+              undefined,
+            location: p.location || undefined,
+            interests: p.interests || undefined,
+            sexual_orientation: p.sexual_orientation || undefined,
+            religion: p.religion,
           });
           if (p.date_of_birth > 0 && p.date_of_birth < 120) {
             setProfileAge(p.date_of_birth);
@@ -383,12 +426,18 @@ export default function AccountPage() {
         const image2 = addTs(p.image2 ?? null);
 
         applyProfilePhotos([mainPhoto, image1, image2]);
+        if (p.about_me?.trim()) setAboutMe(p.about_me.trim());
         storeLoginProfileCache({
           profile_image: mainPhoto,
           image1: image1,
           image2: image2,
           gender: p.gender,
           full_name: p.name,
+          about_me: p.about_me?.trim() || aboutMe.trim() || undefined,
+          location: p.location || location.trim() || undefined,
+          interests: p.interests || interests.trim() || undefined,
+          sexual_orientation: p.sexual_orientation || sexualOrientation || undefined,
+          religion: p.religion ?? religion,
         });
       }
     } catch {

@@ -1088,6 +1088,11 @@ export interface LoginProfileCache {
   image2: string | null;
   gender?: string;
   full_name?: string;
+  about_me?: string;
+  location?: string;
+  interests?: string;
+  sexual_orientation?: string;
+  religion?: string | null;
 }
 
 /** Map live login JSON (names, date_birth, profile_image_one, etc.) onto app fields. */
@@ -1189,6 +1194,11 @@ export function getLoginProfileCache(): LoginProfileCache | null {
       image2: parsed.image2 ?? null,
       gender: parsed.gender,
       full_name: parsed.full_name,
+      about_me: parsed.about_me,
+      location: parsed.location,
+      interests: parsed.interests,
+      sexual_orientation: parsed.sexual_orientation,
+      religion: parsed.religion ?? null,
     };
   } catch {
     return null;
@@ -1279,15 +1289,15 @@ export function buildOwnProfileFromLoginCache(
   return {
     name,
     date_of_birth: age,
-    about_me: "",
+    about_me: (cache?.about_me ?? "").trim(),
     profile_image,
     image1,
     image2,
-    location: "",
-    religion: null,
+    location: (cache?.location ?? "").trim(),
+    religion: cache?.religion ?? null,
     gender,
-    sexual_orientation: "",
-    interests: "",
+    sexual_orientation: (cache?.sexual_orientation ?? "").trim(),
+    interests: (cache?.interests ?? "").trim(),
   };
 }
 
@@ -1670,6 +1680,11 @@ export async function saveAccountProfile(
       image2: urls[2],
       gender: fields.gender,
       full_name: fields.fullName,
+      about_me: fields.about_me,
+      location: fields.location,
+      interests: fields.interests,
+      sexual_orientation: fields.sexual_orientation,
+      religion: fields.religion ?? null,
     });
     if (fields.fullName?.trim()) {
       updateUser({ fullName: fields.fullName.trim() });
@@ -2182,7 +2197,9 @@ export function normalizeSingleProfile(raw: Record<string, unknown>): SingleProf
   return {
     name: String(raw.name ?? raw.full_name ?? ""),
     date_of_birth: dateOfBirth,
-    about_me: String(raw.about_me ?? ""),
+    about_me: String(
+      raw.about_me ?? raw.about ?? raw.bio ?? raw.description ?? ""
+    ).trim(),
     profile_image: normalizeMediaInput(
       typeof raw.profile_image === "string"
         ? raw.profile_image
