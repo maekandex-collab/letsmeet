@@ -453,13 +453,13 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mobile-shell flex flex-col min-h-dvh bg-white">
+    <div className="mobile-shell flex flex-col min-h-dvh">
       <LogoHeader
         right={
           <div className="flex items-center gap-1">
             <button
               onClick={() => setDrawerOpen(true)}
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-border transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-primary-light/70 border border-primary/10 pressable transition-colors"
               aria-label="Settings"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -470,7 +470,7 @@ export default function AccountPage() {
             <button
               type="button"
               onClick={handleSignOut}
-              className="text-xs font-bold text-red-600 px-2.5 py-2 rounded-full hover:bg-red-50 transition-colors"
+              className="text-xs font-bold text-red-600 px-3 py-2 rounded-full hover:bg-red-50 pressable transition-colors"
             >
               Sign Out
             </button>
@@ -481,26 +481,29 @@ export default function AccountPage() {
       <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav px-5">
         {loading ? (
           <div className="pt-6 space-y-4">
-            <div className="h-6 w-40 rounded-full bg-[#F5F5F5] animate-pulse" />
+            <div className="h-6 w-40 rounded-full skeleton-shimmer" />
             <div className="grid grid-cols-3 gap-2.5">
-              <div className="aspect-[3/4] rounded-2xl bg-[#F5F5F5] animate-pulse" />
-              <div className="aspect-[3/4] rounded-2xl bg-[#F5F5F5] animate-pulse" />
-              <div className="aspect-[3/4] rounded-2xl bg-[#F5F5F5] animate-pulse" />
+              <div className="aspect-[3/4] rounded-2xl skeleton-shimmer" />
+              <div className="aspect-[3/4] rounded-2xl skeleton-shimmer" />
+              <div className="aspect-[3/4] rounded-2xl skeleton-shimmer" />
             </div>
-            <div className="w-full h-14 rounded-2xl bg-[#F5F5F5] animate-pulse" />
-            <div className="w-full h-14 rounded-2xl bg-[#F5F5F5] animate-pulse" />
-            <div className="w-full h-14 rounded-2xl bg-[#F5F5F5] animate-pulse" />
+            <div className="w-full h-14 rounded-2xl skeleton-shimmer" />
+            <div className="w-full h-14 rounded-2xl skeleton-shimmer" />
+            <div className="w-full h-14 rounded-2xl skeleton-shimmer" />
           </div>
         ) : (
           <>
-            <div className="pt-5 pb-1">
-              <h1 className="text-2xl font-bold text-dark">My Profile</h1>
+            <div className="pt-5 pb-1 animate-fade-up">
+              <p className="section-kicker mb-1">You</p>
+              <h1 className="text-2xl font-bold text-dark">
+                {name ? name : "My Profile"}
+              </h1>
               <p className="text-sm text-muted mt-0.5">
                 Update photos and About Me — other details are view only
               </p>
             </div>
 
-            <div className="mt-5">
+            <div className="mt-5 rounded-[28px] bg-white/90 border border-white shadow-card p-3.5">
               <ProfilePhotoEditor slots={photos} onChange={setPhotos} />
             </div>
 
@@ -513,12 +516,12 @@ export default function AccountPage() {
               </div>
             )}
 
-            <div className="bg-white rounded-3xl shadow-card border border-border/60 p-4 sm:p-5 mt-5">
+            <div className="bg-white/95 rounded-[28px] shadow-card border border-white p-4 sm:p-5 mt-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xs font-bold text-dark uppercase tracking-wider">
                   Personal Info
                 </h2>
-                <span className="text-[10px] font-semibold text-muted uppercase tracking-wide">
+                <span className="text-[10px] font-bold text-primary bg-primary-light px-2.5 py-1 rounded-full uppercase tracking-wide">
                   View only
                 </span>
               </div>
@@ -622,11 +625,14 @@ export default function AccountPage() {
               </p>
             </div>
 
-            <div className="bg-white rounded-3xl shadow-card border border-border/60 p-4 sm:p-5 mt-5">
+            <div className="bg-white/95 rounded-[28px] shadow-card border border-white p-4 sm:p-5 mt-5">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <h2 className="text-xs font-bold text-dark uppercase tracking-wider">
                   About Me
                 </h2>
+                <span className="text-[10px] font-bold text-accent bg-[#EEEEFF] px-2.5 py-1 rounded-full uppercase tracking-wide">
+                  Editable
+                </span>
               </div>
               <div className="relative">
                 <textarea
@@ -634,7 +640,7 @@ export default function AccountPage() {
                   onChange={(e) => setAboutMe(e.target.value.slice(0, 300))}
                   rows={5}
                   placeholder="Tell people what makes you you…"
-                  className="w-full rounded-2xl border-2 border-border bg-[#F5F5F5] px-4 py-3 text-sm font-medium text-dark placeholder-muted/60 outline-none focus:border-primary resize-none transition-colors leading-relaxed"
+                  className="w-full rounded-2xl border border-primary/10 bg-[#f8f3fa] px-4 py-3 text-sm font-medium text-dark placeholder-muted/60 outline-none focus:border-primary focus:bg-white resize-none transition-colors leading-relaxed"
                 />
                 <span
                   className={`absolute bottom-3 right-4 text-[10px] font-medium ${
@@ -659,7 +665,7 @@ export default function AccountPage() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="btn-primary w-full mt-6 shadow-card disabled:opacity-50"
+              className="btn-primary w-full mt-6 shadow-soft disabled:opacity-50 pressable"
             >
               {saving ? "Saving..." : "Save Changes"}
             </button>
@@ -671,18 +677,21 @@ export default function AccountPage() {
       {drawerOpen && (
         <>
           <div
-            className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-40 transition-opacity"
             onClick={() => setDrawerOpen(false)}
           />
           <div
-            className="fixed top-0 left-0 h-full w-[80%] max-w-[340px] bg-white z-50 flex flex-col shadow-2xl"
+            className="fixed top-0 left-0 h-full w-[80%] max-w-[340px] bg-white/95 backdrop-blur-xl z-50 flex flex-col shadow-2xl border-r border-primary/10 animate-fade-up"
             style={{ maxWidth: "min(340px, calc(600px * 0.8))" }}
           >
-            <div className="flex items-center justify-between px-5 py-5 border-b border-border">
-              <h2 className="text-xl font-bold text-dark">Settings</h2>
+            <div className="flex items-center justify-between px-5 py-5 border-b border-primary/10">
+              <div>
+                <p className="section-kicker mb-0.5">Menu</p>
+                <h2 className="text-xl font-bold text-dark">Settings</h2>
+              </div>
               <button
                 onClick={() => setDrawerOpen(false)}
-                className="w-8 h-8 rounded-full bg-[#F5F5F5] flex items-center justify-center"
+                className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center pressable"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M18 6L6 18M6 6L18 18" stroke="#12151C" strokeWidth="2" strokeLinecap="round"/>
@@ -696,9 +705,9 @@ export default function AccountPage() {
                   key={item.label}
                   href={item.href}
                   onClick={() => setDrawerOpen(false)}
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-[#F5F5F5] transition-colors"
+                  className="flex items-center gap-4 px-5 py-4 hover:bg-primary-light/50 transition-colors"
                 >
-                  <div className="w-9 h-9 rounded-2xl bg-[#EEEEFF] flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-2xl bg-[#EEEEFF] flex items-center justify-center shrink-0 border border-accent/10">
                     {item.icon}
                   </div>
                   <span className="flex-1 text-sm font-semibold text-dark">{item.label}</span>

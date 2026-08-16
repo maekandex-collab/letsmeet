@@ -15,7 +15,7 @@
 
 :root {
   --header-h: 4.5rem;
-  --bottom-nav-h: 4.5rem;
+  --bottom-nav-h: 5rem;
   --composer-h: 4rem;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
@@ -94,6 +94,31 @@ input[type=number]::-webkit-inner-spin-button {
 }
 .animate-slideDown { animation: slideDown 0.3s ease-out both; }
 
+/* Subtle LetsMeet chat texture — visual only, no external asset. */
+.chat-wallpaper {
+  background-color: #f8f3fa;
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(247, 89, 245, 0.08) 0 2px, transparent 3px),
+    radial-gradient(circle at 78% 35%, rgba(62, 54, 237, 0.06) 0 2px, transparent 3px),
+    radial-gradient(circle at 42% 78%, rgba(247, 89, 245, 0.06) 0 3px, transparent 4px),
+    linear-gradient(135deg, rgba(255,255,255,0.55), rgba(248,243,250,0.25));
+  background-size: 72px 72px, 92px 92px, 110px 110px, 100% 100%;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #a76ba6;
+  animation: typingBounce 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
 .animate-splash-blob { animation: splashBlob 12s ease-in-out infinite; }
 .animate-splash-logo-in { animation: splashLogoIn 0.9s cubic-bezier(0.22,1,0.36,1) both; }
 .animate-splash-glow { animation: splashGlow 2.8s ease-in-out infinite; }
@@ -123,12 +148,50 @@ input[type=number] {
   .pb-bottom-nav {
     padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
   }
+  .page-surface {
+    background:
+      radial-gradient(circle at top right, rgba(247, 89, 245, 0.08), transparent 34%),
+      radial-gradient(circle at 12% 28%, rgba(62, 54, 237, 0.05), transparent 28%),
+      linear-gradient(180deg, #fff 0%, #fbf7fc 100%);
+  }
+  .glass-card {
+    @apply bg-white/90 backdrop-blur-xl border border-white shadow-card rounded-3xl;
+  }
+  .section-kicker {
+    @apply text-[11px] font-bold uppercase tracking-[0.14em] text-primary/70;
+  }
+  .pressable {
+    @apply transition-transform active:scale-[0.97];
+  }
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, #f3eef6 25%, #faf5fb 50%, #f3eef6 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .typing-dot,
+  .animate-splash-blob,
+  .animate-splash-glow,
+  .animate-splash-heartbeat,
+  .animate-splash-float-heart {
+    animation: none !important;
+  }
 }
 
 @layer components {
   /* Mobile shell — centered, max 600px */
   .mobile-shell {
-    @apply max-w-mobile mx-auto min-h-dvh bg-white relative overflow-x-hidden;
+    @apply max-w-mobile mx-auto min-h-dvh relative overflow-x-hidden page-surface;
   }
   /* Horizontal screen padding */
   .px-screen {
@@ -181,7 +244,12 @@ input[type=number] {
   }
   /* App header */
   .app-header {
-    @apply fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile bg-white px-4 py-3 flex items-center justify-between z-50 shadow-header pt-safe;
+    @apply fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile px-4 py-3 flex items-center justify-between z-50 pt-safe;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(247, 89, 245, 0.08);
+    box-shadow: 0 8px 28px -12px rgba(62, 54, 237, 0.12);
   }
   /* Bottom nav tab */
   .tab-item {

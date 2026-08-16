@@ -234,95 +234,106 @@ function VideoCallContent() {
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 px-8 pb-16 z-10">
-        <div className="flex items-center justify-center gap-5">
-          <div className="flex flex-col items-center gap-1.5">
-            <button
-              type="button"
-              onClick={toggleMute}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
-                isMuted ? "bg-white text-dark" : "bg-white/10 text-white"
-              }`}
-              title={isMuted ? "Unmute" : "Mute"}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                {isMuted && (
-                  <path
-                    d="M3 3l18 18"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                )}
-              </svg>
-            </button>
-            <span className="text-white/70 text-[11px]">
-              {isMuted ? "Muted" : "Mic on"}
-            </span>
-          </div>
-
-          {inCall && (
-            <div className="flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  endCall();
-                  window.location.href = backHref;
-                }}
-                className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-card"
-                title="End call"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
-                    fill="white"
-                  />
-                </svg>
-              </button>
-              <span className="text-white/70 text-[11px]">End</span>
-            </div>
-          )}
-
-          {inCall && !audioOnly && (
-            <div className="flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={toggleCamera}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
-                  isCameraOff ? "bg-white text-dark" : "bg-white/10 text-white"
-                }`}
-                title={isCameraOff ? "Turn camera on" : "Turn camera off"}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <polygon points="23 7 16 12 23 17 23 7" stroke="currentColor" strokeWidth="2" />
-                  <rect x="1" y="5" width="15" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
-                  {isCameraOff && (
+      <div className="absolute bottom-0 left-0 right-0 px-6 pb-14 z-10">
+        {!incomingCall && (
+          <div className="mx-auto max-w-sm rounded-[28px] bg-black/45 backdrop-blur-md border border-white/10 px-5 py-4">
+            <div className="flex items-end justify-center gap-6">
+              <div className="flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+                    isMuted ? "bg-white text-dark" : "bg-white/15 text-white"
+                  }`}
+                  title={isMuted ? "Unmute" : "Mute"}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                     <path
-                      d="M3 3l18 18"
+                      d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"
                       stroke="currentColor"
                       strokeWidth="2"
                       strokeLinecap="round"
                     />
-                  )}
-                </svg>
-              </button>
-              <span className="text-white/70 text-[11px]">
-                {isCameraOff ? "Camera off" : "Camera on"}
-              </span>
+                    {isMuted && (
+                      <path
+                        d="M3 3l18 18"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    )}
+                  </svg>
+                </button>
+                <span className="text-white/70 text-[11px]">
+                  {isMuted ? "Muted" : "Mute"}
+                </span>
+              </div>
+
+              {!audioOnly && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={toggleCamera}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+                      isCameraOff ? "bg-white text-dark" : "bg-white/15 text-white"
+                    }`}
+                    title={isCameraOff ? "Turn camera on" : "Turn camera off"}
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                      <polygon points="23 7 16 12 23 17 23 7" stroke="currentColor" strokeWidth="2" />
+                      <rect x="1" y="5" width="15" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
+                      {isCameraOff && (
+                        <path
+                          d="M3 3l18 18"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      )}
+                    </svg>
+                  </button>
+                  <span className="text-white/70 text-[11px]">
+                    {isCameraOff ? "Cam off" : "Video"}
+                  </span>
+                </div>
+              )}
+
+              {/* WhatsApp-style hang-up: red circle, handset facing down */}
+              <div className="flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    endCall();
+                    window.location.href = backHref;
+                  }}
+                  className="w-16 h-16 rounded-full bg-[#FF3B30] flex items-center justify-center shadow-lg shadow-red-500/30 active:scale-95 transition-transform"
+                  title="End call"
+                  aria-label="End call"
+                >
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className="rotate-[135deg]"
+                    aria-hidden
+                  >
+                    <path
+                      d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
+                      fill="white"
+                    />
+                  </svg>
+                </button>
+                <span className="text-white/70 text-[11px]">End</span>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

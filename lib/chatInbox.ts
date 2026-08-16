@@ -85,6 +85,24 @@ export function pruneInboxToRooms(roomIds: (string | number)[]): void {
   if (changed) saveInboxMap(map);
 }
 
+/** Remove one conversation from the local inbox after unmatch. */
+export function removeInboxRoom(roomId: string | number): void {
+  if (typeof window === "undefined") return;
+  const map = loadInboxMap();
+  const canonical = inboxKey(roomId);
+  const raw = String(roomId).trim();
+  let changed = false;
+  if (map[canonical]) {
+    delete map[canonical];
+    changed = true;
+  }
+  if (raw && raw !== canonical && map[raw]) {
+    delete map[raw];
+    changed = true;
+  }
+  if (changed) saveInboxMap(map);
+}
+
 export function clearChatInbox(): void {
   if (typeof window === "undefined") return;
   try {

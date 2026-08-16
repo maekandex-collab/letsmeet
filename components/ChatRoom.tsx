@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   sendMessage,
   extractError,
@@ -23,6 +24,8 @@ import {
   buildVideoCallHref,
   buildAudioCallHref,
   resolveNumericRoomId,
+  unmatchUser,
+  matchIdForUnmatch,
   type StoredChatMessage,
 } from "@/lib/letsmeet";
 import { useChatSocket, type WsIncomingMessage } from "@/lib/useChatSocket";
@@ -32,6 +35,7 @@ import {
   syncInboxFromMessages,
   bumpOutgoing,
   upsertInboxPeer,
+  removeInboxRoom,
 } from "@/lib/chatInbox";
 import ChatComposer from "@/components/ChatComposer";
 import Avatar from "@/components/Avatar";
@@ -50,23 +54,64 @@ function scrollToBottom(el: HTMLElement | null, smooth = true) {
   el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "end" });
 }
 
+function MessageTicks({ message }: { message: ChatMessage }) {
+  if (message.from !== "me") return null;
+  if (message.delivery === "sending") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-label="Sending">
+        <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
+        <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (message.delivery === "failed") {
+    return <span className="font-bold text-red-200" aria-label="Failed to send">!</span>;
+  }
+  const read = message.delivery === "read" || message.isRead === true;
+  if (!read) {
+    return (
+      <svg width="13" height="11" viewBox="0 0 14 12" fill="none" className="text-white/70" aria-label="Sent">
+        <path d="M1.2 6 4.6 9.3 12.4 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width="16"
+      height="12"
+      viewBox="0 0 20 14"
+      fill="none"
+      className={read ? "text-cyan-200" : "text-white/70"}
+      aria-label="Read"
+    >
+      <path d="M1.5 7.2 5 10.5 11.3 3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m8.3 9.8 1 .7 8-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 interface ChatRoomProps {
   roomId: number | string;
 }
 
 export default function ChatRoom({ roomId }: ChatRoomProps) {
+  const router = useRouter();
   const [name, setName] = useState("Chat");
   const [userId, setUserId] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [matchId, setMatchId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unmatching, setUnmatching] = useState(false);
+  const [peerTyping, setPeerTyping] = useState(false);
   const [peerLoading, setPeerLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string>("");
+  const peerTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const storageKey = String(roomId);
 
@@ -101,6 +146,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         if (!cancelled) {
           setName(peer.name || "Chat");
           setUserId(peer.userId);
+          if (peer.matchId) setMatchId(peer.matchId);
           const img = peer.photo ?? getChatPhoto(roomId, peer.userId);
           setPhoto(img);
           if (img) prefetchMedia([img], 1);
@@ -118,6 +164,8 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       if (match) {
         setName(match.name);
         setUserId(match.user_id);
+        const resolvedMatchId = matchIdForUnmatch(match);
+        if (resolvedMatchId) setMatchId(resolvedMatchId);
         const img = normalizeMediaInput(match.profile_photo);
         if (img) {
           setPhoto(img);
@@ -263,7 +311,70 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     [roomId, peerMeta, scrollBottom]
   );
 
-  const { connected } = useChatSocket(roomId, onIncoming);
+  const onPeerTyping = useCallback((typing: boolean) => {
+    setPeerTyping(typing);
+    if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+    if (typing) {
+      peerTypingTimerRef.current = setTimeout(() => setPeerTyping(false), 3500);
+    }
+  }, []);
+
+  const { connected, sendTyping } = useChatSocket(roomId, onIncoming, onPeerTyping);
+
+  useEffect(() => {
+    if (!connected) return;
+    const typing = input.trim().length > 0;
+    sendTyping(typing);
+    if (!typing) return;
+    const timer = setTimeout(() => sendTyping(false), 1800);
+    return () => clearTimeout(timer);
+  }, [input, connected, sendTyping]);
+
+  useEffect(() => () => {
+    if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+  }, []);
+
+  async function handleUnmatch() {
+    setMenuOpen(false);
+    if (unmatching) return;
+
+    let id = matchId;
+    if (!id) {
+      const match = await findMatchByRoomId(roomId);
+      id = match ? matchIdForUnmatch(match) : null;
+      if (id) setMatchId(id);
+    }
+    if (!id) {
+      setError("Could not find this match to unmatch.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Unmatch ${name}? You won’t see each other in matches or messages anymore.`
+    );
+    if (!ok) return;
+
+    setUnmatching(true);
+    setError("");
+    try {
+      const res = await unmatchUser(id);
+      if (!res.ok) {
+        setError(extractError(res.data, "Could not unmatch right now."));
+        return;
+      }
+      try {
+        localStorage.removeItem(`lm_chat_${storageKey}`);
+      } catch {
+        // ignore
+      }
+      removeInboxRoom(roomId);
+      router.replace("/matches");
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setUnmatching(false);
+    }
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -276,7 +387,8 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       text,
       time: nowTime(),
       at: Date.now(),
-      isRead: true,
+      isRead: false,
+      delivery: "sending",
     };
     setMessages((prev) => {
       const next = [...prev, optimistic];
@@ -294,23 +406,35 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       const res = await sendMessage(text, roomId);
       if (!res.ok || res.data?.error) {
         setError(extractError(res.data, "Message failed to save."));
-        setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimistic.id ? { ...m, delivery: "failed" as const } : m
+          )
+        );
         return;
       }
 
-      if (res.data?.message_id != null) {
-        setMessages((prev) => {
-          const next = prev.map((m) =>
-            m.id === optimistic.id ? { ...m, id: res.data!.message_id! } : m
-          );
-          saveChatMessages(storageKey, next);
-          syncInboxFromMessages(roomId, next, peerMeta());
-          return next;
-        });
-      }
+      setMessages((prev) => {
+        const next = prev.map((m) =>
+          m.id === optimistic.id
+            ? {
+                ...m,
+                id: res.data?.message_id ?? m.id,
+                delivery: "sent" as const,
+              }
+            : m
+        );
+        saveChatMessages(storageKey, next);
+        syncInboxFromMessages(roomId, next, peerMeta());
+        return next;
+      });
     } catch {
       setError("Network error. Message not sent.");
-      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === optimistic.id ? { ...m, delivery: "failed" as const } : m
+        )
+      );
     } finally {
       setSending(false);
     }
@@ -324,8 +448,9 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   };
 
   return (
-    <div className="mobile-shell flex flex-col min-h-dvh bg-[#FAFAFA]">
-      <header className="app-header flex items-center gap-2.5">
+    <div className="mobile-shell flex flex-col min-h-dvh bg-[#f8f3fa]">
+      <div className="pointer-events-none fixed inset-0 left-1/2 -translate-x-1/2 w-full max-w-mobile chat-wallpaper" />
+      <header className="app-header flex items-center gap-2.5 !bg-white/90 backdrop-blur-xl border-b border-primary/10">
         <Link
           href="/messages"
           className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors flex-shrink-0"
@@ -351,8 +476,8 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             <span
               className={`w-2 h-2 rounded-full flex-shrink-0 ${connected ? "bg-green-500" : "bg-amber-400"}`}
             />
-            <p className="text-xs font-medium text-muted truncate">
-              {connected ? "Live" : "Connecting…"}
+            <p className={`text-xs font-semibold truncate ${peerTyping ? "text-primary" : "text-muted"}`}>
+              {peerTyping ? `${name} is typing…` : connected ? "Online" : "Connecting…"}
             </p>
           </div>
         </div>
@@ -409,7 +534,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
                     syncInboxFromMessages(roomId, [], peerMeta());
                     setMenuOpen(false);
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-dark hover:bg-border/60 transition-colors text-left"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path
@@ -422,6 +547,26 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
                   </svg>
                   Clear chat
                 </button>
+                <button
+                  type="button"
+                  disabled={unmatching}
+                  onClick={() => void handleUnmatch()}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors text-left border-t border-border disabled:opacity-60"
+                >
+                  {unmatching ? (
+                    <span className="w-4 h-4 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M18 6L6 18M6 6l12 12"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  )}
+                  {unmatching ? "Unmatching…" : "Unmatch"}
+                </button>
               </div>
             </>
           )}
@@ -429,7 +574,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       </header>
 
       <div
-        className="flex-1 overflow-y-auto px-4 pt-header space-y-3"
+        className="relative z-[1] flex-1 overflow-y-auto px-3 pt-header space-y-1.5"
         style={{ paddingBottom: COMPOSER_OFFSET }}
       >
         {historyLoading && messages.length === 0 && (
@@ -447,12 +592,20 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
         {!historyLoading && messages.length === 0 && (
           <div className="text-center text-sm text-muted mt-16 px-6">
-            <p className="font-semibold text-dark mb-1">Say hi to {name}!</p>
-            <p>Start the conversation with a friendly message.</p>
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-white/80 border border-primary/15 shadow-card flex items-center justify-center">
+              <span className="text-3xl">💬</span>
+            </div>
+            <p className="font-bold text-dark text-lg mb-1">You matched with {name}!</p>
+            <p className="max-w-[260px] mx-auto">Break the ice and start something meaningful ✨</p>
           </div>
         )}
 
-        {messages.map((msg, index) => (
+        {messages.map((msg, index) => {
+          const previous = messages[index - 1];
+          const next = messages[index + 1];
+          const startsGroup = !previous || previous.from !== msg.from || showDateSeparator(index);
+          const endsGroup = !next || next.from !== msg.from;
+          return (
           <div key={msg.id}>
             {showDateSeparator(index) && (
               <div className="flex justify-center my-4">
@@ -464,26 +617,38 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             <div
               className={`flex items-end gap-2 ${msg.from === "me" ? "justify-end" : "justify-start"}`}
             >
-              {msg.from === "them" && (
+              {msg.from === "them" && endsGroup ? (
                 <Avatar photo={photo} name={name} size="sm" className="!w-8 !h-8 text-[10px] mb-1" />
-              )}
+              ) : msg.from === "them" ? <span className="w-8 flex-shrink-0" /> : null}
               <div
-                className={`max-w-[78%] px-4 py-3 rounded-2xl text-[15px] leading-6 scroll-mb-24 ${
+                className={`max-w-[79%] px-4 py-2.5 text-[15px] leading-6 scroll-mb-24 transition-all ${
                   msg.from === "me"
-                    ? "bg-primary text-white rounded-br-md shadow-sm"
-                    : "bg-white text-dark rounded-bl-md shadow-card border border-border/50"
+                    ? `bg-gradient-to-br from-primary to-[#d946ef] text-white shadow-[0_5px_16px_rgba(247,89,245,0.2)] ${startsGroup ? "rounded-t-2xl" : "rounded-tl-2xl rounded-tr-md"} ${endsGroup ? "rounded-bl-2xl rounded-br-md" : "rounded-b-2xl"}`
+                    : `bg-white/95 text-dark shadow-[0_4px_14px_rgba(34,24,44,0.08)] border border-white ${startsGroup ? "rounded-t-2xl" : "rounded-tr-2xl rounded-tl-md"} ${endsGroup ? "rounded-br-2xl rounded-bl-md" : "rounded-b-2xl"}`
                 }`}
               >
                 <p className="break-words">{msg.text}</p>
-                <p
-                  className={`text-[11px] mt-1 ${msg.from === "me" ? "text-white/70" : "text-muted"}`}
-                >
-                  {msg.time}
-                </p>
+                <div className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${msg.from === "me" ? "text-white/65" : "text-muted"}`}>
+                  <span>{msg.time}</span>
+                  <MessageTicks message={msg} />
+                </div>
               </div>
             </div>
           </div>
-        ))}
+        )})}
+
+        {peerTyping && (
+          <div className="flex items-end gap-2 pt-1">
+            <Avatar photo={photo} name={name} size="sm" className="!w-8 !h-8 text-[10px]" />
+            <div className="bg-white/95 border border-white shadow-card rounded-2xl rounded-bl-md px-4 py-3">
+              <div className="flex items-center gap-1" aria-label={`${name} is typing`}>
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </div>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} className="h-1 scroll-mb-24" />
       </div>
 

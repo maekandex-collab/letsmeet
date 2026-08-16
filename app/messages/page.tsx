@@ -22,6 +22,7 @@ import {
   parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
+import { PageEnter, StaggerItem, StaggerList } from "@/lib/motion";
 
 function normalize(data: ProfileCard[] | ProfileCard | null | undefined): ProfileCard[] {
   return parseProfileCards(data);
@@ -107,12 +108,13 @@ export default function MessagesPage() {
   return (
     <div className="mobile-shell flex flex-col min-h-dvh">
       <LogoHeader />
-      <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
+      <PageEnter className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
         <div className="px-5 pt-2 pb-1 flex items-center justify-between">
           <div>
+            <p className="section-kicker mb-1">Inbox</p>
             <h1 className="text-2xl font-bold text-dark">Messages</h1>
             {totalUnreadDisplay > 0 && (
-              <p className="text-sm text-primary font-medium mt-0.5">
+              <p className="text-sm text-primary font-semibold mt-0.5">
                 {totalUnreadDisplay} unread
               </p>
             )}
@@ -120,7 +122,7 @@ export default function MessagesPage() {
           <UnreadBadge count={totalUnreadDisplay} />
         </div>
 
-        <div className="px-5 py-3 sticky top-[var(--header-h)] bg-white z-10">
+        <div className="px-5 py-3 sticky top-[var(--header-h)] z-10 bg-surface/80 backdrop-blur-xl">
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -133,7 +135,7 @@ export default function MessagesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search messages..."
-              className="w-full h-12 pl-11 pr-4 rounded-2xl bg-border text-sm font-medium text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full h-12 pl-11 pr-4 rounded-[24px] bg-white border border-primary/10 text-sm font-medium text-dark placeholder-muted shadow-soft focus:outline-none focus:ring-2 focus:ring-primary/25"
             />
           </div>
         </div>
@@ -145,9 +147,9 @@ export default function MessagesPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="px-5 py-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center mx-auto mb-3">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+          <div className="px-5 py-14 text-center">
+            <div className="w-20 h-20 rounded-[28px] bg-white border border-primary/10 shadow-card flex items-center justify-center mx-auto mb-4">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
                   stroke="#F759F5"
@@ -156,30 +158,34 @@ export default function MessagesPage() {
                 />
               </svg>
             </div>
-            <p className="text-sm text-muted">
+            <h3 className="text-lg font-bold text-dark mb-1">
+              {query ? "No matches found" : "No conversations yet"}
+            </h3>
+            <p className="text-sm text-muted max-w-xs mx-auto">
               {query
                 ? "No conversations match your search."
-                : "No conversations yet. Match with someone to start chatting!"}
+                : "Match with someone to start chatting!"}
             </p>
           </div>
         ) : (
-          <div className="mt-1 pb-4">
+          <StaggerList className="mt-1 pb-4">
             {hydrating && (
               <p className="text-xs text-muted text-center py-2">Updating conversations…</p>
             )}
             {filtered.map((c) => {
               const key = inboxKeyForMatch(c);
               return (
-                <ConversationRow
-                  key={`${c.user_id}-${avatarEpoch}`}
-                  match={c}
-                  inbox={inboxMap[key] ?? getInboxEntry(key)}
-                />
+                <StaggerItem key={`${c.user_id}-${avatarEpoch}`}>
+                  <ConversationRow
+                    match={c}
+                    inbox={inboxMap[key] ?? getInboxEntry(key)}
+                  />
+                </StaggerItem>
               );
             })}
-          </div>
+          </StaggerList>
         )}
-      </div>
+      </PageEnter>
 
       <BottomNav />
     </div>

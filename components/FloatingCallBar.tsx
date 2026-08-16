@@ -108,17 +108,25 @@ export default function FloatingCallBar() {
           </div>
         </div>
 
-        {/* End Call button */}
+        {/* End Call button — handset facing down like WhatsApp */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             endCall();
           }}
-          className="w-9 h-9 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
+          className="w-9 h-9 rounded-full bg-[#FF3B30] flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
           title="End call"
+          aria-label="End call"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            className="rotate-[135deg]"
+            aria-hidden
+          >
             <path
               d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
               fill="white"

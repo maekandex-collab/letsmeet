@@ -30,39 +30,50 @@ export default function IncomingCallOverlay({
         <p className="text-white/70 text-sm mb-10">Incoming {audioOnly ? "audio" : "video"} call…</p>
 
         <div className="flex items-center gap-8">
-          <button
-            type="button"
-            onClick={onDecline}
-            className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-card hover:opacity-90 transition-opacity"
-            title="Decline"
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
-                fill="white"
-              />
-            </svg>
-          </button>
-
+          {/* Green accept — left, handset facing up */}
           <button
             type="button"
             onClick={onAccept}
             className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center shadow-card hover:opacity-90 transition-opacity"
             title="Accept"
+            aria-label="Accept call"
           >
             {audioOnly ? (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
                   fill="white"
                 />
               </svg>
             ) : (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <polygon points="23 7 16 12 23 17 23 7" fill="white" />
                 <rect x="1" y="5" width="15" height="14" rx="2" fill="white" />
               </svg>
             )}
+          </button>
+
+          {/* Red decline — right, handset facing down (WhatsApp hang-up) */}
+          <button
+            type="button"
+            onClick={onDecline}
+            className="w-16 h-16 rounded-full bg-[#FF3B30] flex items-center justify-center shadow-card hover:opacity-90 transition-opacity"
+            title="Decline"
+            aria-label="Decline call"
+          >
+            <svg
+              width="26"
+              height="26"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="rotate-[135deg]"
+              aria-hidden
+            >
+              <path
+                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 9.81 19.79 19.79 0 0 1 1.61 1.17 2 2 0 0 1 3.58 0H6.5a2 2 0 0 1 2 1.72 12.1 12.1 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.1 12.1 0 0 0 2.81.7A2 2 0 0 1 22 14.92z"
+                fill="white"
+              />
+            </svg>
           </button>
         </div>
       </div>

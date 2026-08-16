@@ -22,10 +22,17 @@ export default function ConversationRow({ match, inbox }: ConversationRowProps) 
     <Link
       href={buildChatHref(match)}
       onClick={() => stashChatPeer(match)}
-      className="flex items-center gap-3 mx-4 mb-2 px-4 py-3.5 rounded-2xl bg-white shadow-card border border-border/60 hover:bg-border/20 transition-colors"
+      className={`flex items-center gap-3 mx-4 mb-2.5 px-4 py-3.5 rounded-[24px] border transition-all pressable ${
+        unread > 0
+          ? "bg-gradient-to-r from-primary-light/80 to-white border-primary/20 shadow-soft"
+          : "bg-white/95 border-white shadow-card hover:border-primary/10"
+      }`}
     >
       <div className="relative flex-shrink-0">
         <Avatar photo={match.profile_photo} name={match.name} size="md" priority />
+        {unread > 0 && (
+          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary border-2 border-white" />
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -36,7 +43,7 @@ export default function ConversationRow({ match, inbox }: ConversationRowProps) 
             {match.name}
           </p>
           {lastAt > 0 && (
-            <span className={`text-xs flex-shrink-0 ${unread > 0 ? "text-primary font-semibold" : "text-muted"}`}>
+            <span className={`text-[11px] flex-shrink-0 ${unread > 0 ? "text-primary font-bold" : "text-muted"}`}>
               {formatRelativeTime(lastAt)}
             </span>
           )}
@@ -54,11 +61,11 @@ export default function ConversationRow({ match, inbox }: ConversationRowProps) 
 
 export function ConversationRowSkeleton() {
   return (
-    <div className="flex items-center gap-3 mx-4 mb-2 px-4 py-3.5 rounded-2xl bg-white border border-border/60 animate-pulse">
-      <div className="w-14 h-14 rounded-full bg-border flex-shrink-0" />
+    <div className="flex items-center gap-3 mx-4 mb-2.5 px-4 py-3.5 rounded-[24px] bg-white/90 border border-white shadow-card overflow-hidden">
+      <div className="w-14 h-14 rounded-full skeleton-shimmer flex-shrink-0" />
       <div className="flex-1 space-y-2">
-        <div className="h-4 bg-border rounded w-1/3" />
-        <div className="h-3 bg-border rounded w-2/3" />
+        <div className="h-4 rounded-full skeleton-shimmer w-1/3" />
+        <div className="h-3 rounded-full skeleton-shimmer w-2/3" />
       </div>
     </div>
   );

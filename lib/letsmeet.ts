@@ -689,6 +689,7 @@ export interface ChatPeerContext {
   photo: string | null;
   chatroomId?: string;
   roomId?: number;
+  matchId?: string;
 }
 
 const CHAT_PEER_KEY = "lm_chat_peer";
@@ -704,6 +705,7 @@ export function stashChatPeer(card: ProfileCard): void {
     photo,
     chatroomId: card.chatroom_id,
     roomId: roomId ?? undefined,
+    matchId: matchIdForUnmatch(card) ?? undefined,
   };
   try {
     sessionStorage.setItem(CHAT_PEER_KEY, JSON.stringify(peer));
@@ -808,6 +810,7 @@ export interface StoredChatMessage {
   time: string;
   at: number;
   isRead?: boolean;
+  delivery?: "sending" | "sent" | "delivered" | "read" | "failed";
 }
 
 const CHAT_MSG_PREFIX = "lm_chat_msgs_";
@@ -1961,6 +1964,7 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
         text,
         time,
         at: Number.isFinite(at) ? at : Date.now() + index,
+        delivery: from === "me" ? (m.is_read ? "read" : "sent") : undefined,
       };
       if (typeof m.is_read === "boolean") {
         message.isRead = m.is_read;

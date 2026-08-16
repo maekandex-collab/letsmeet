@@ -13,6 +13,7 @@ import {
   markNotificationRead,
   type Notification,
 } from "@/lib/letsmeet";
+import { PageEnter, StaggerItem, StaggerList } from "@/lib/motion";
 
 function formatRelativeTime(value: string): string {
   const date = new Date(value);
@@ -126,58 +127,96 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="mobile-shell flex flex-col min-h-dvh bg-white">
+    <div className="mobile-shell flex flex-col min-h-dvh">
       <LogoHeader
         right={
           unreadCount > 0 ? <UnreadBadge count={unreadCount} /> : null
         }
       />
 
-      <div className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
+      <PageEnter className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
+        <div className="px-5 pt-2 pb-3">
+          <p className="section-kicker mb-1">Activity</p>
+          <h1 className="text-2xl font-bold text-dark">Notifications</h1>
+          {unreadCount > 0 && (
+            <p className="text-sm text-primary font-semibold mt-0.5">
+              {unreadCount} new update{unreadCount === 1 ? "" : "s"}
+            </p>
+          )}
+        </div>
+
         {loading && (
-          <p className="px-5 pt-6 text-sm text-muted">Loading notifications…</p>
+          <div className="px-5 space-y-3 pt-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 rounded-[24px] skeleton-shimmer" />
+            ))}
+          </div>
         )}
 
         {error && (
-          <p className="px-5 pt-6 text-sm text-rose-600">{error}</p>
+          <p className="mx-5 mt-2 text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">
+            {error}
+          </p>
         )}
 
         {!loading && !error && items.length === 0 && (
-          <p className="px-5 pt-6 text-sm text-muted">No notifications yet.</p>
+          <div className="px-5 py-14 text-center">
+            <div className="w-20 h-20 rounded-[28px] bg-white border border-primary/10 shadow-card flex items-center justify-center mx-auto mb-4">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+                  stroke="#F759F5"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="#F759F5" strokeWidth="2" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-dark mb-1">You&apos;re all caught up</h3>
+            <p className="text-sm text-muted max-w-xs mx-auto">
+              New likes, matches, and messages will show up here.
+            </p>
+          </div>
         )}
 
         {unread.length > 0 && (
           <div>
-            <p className="px-5 pt-4 pb-2 text-xs font-bold text-muted uppercase tracking-wider">
+            <p className="px-5 pt-2 pb-2 text-xs font-bold text-primary uppercase tracking-[0.14em]">
               New
             </p>
-            {unread.map((n) => (
-              <NotifRow
-                key={n.id}
-                n={n}
-                onRead={() => markRead(n.id)}
-                onDelete={() => void removeNotification(n.id)}
-              />
-            ))}
+            <StaggerList>
+              {unread.map((n) => (
+                <StaggerItem key={n.id}>
+                  <NotifRow
+                    n={n}
+                    onRead={() => markRead(n.id)}
+                    onDelete={() => void removeNotification(n.id)}
+                  />
+                </StaggerItem>
+              ))}
+            </StaggerList>
           </div>
         )}
 
         {earlier.length > 0 && (
           <div>
-            <p className="px-5 pt-5 pb-2 text-xs font-bold text-muted uppercase tracking-wider">
+            <p className="px-5 pt-5 pb-2 text-xs font-bold text-muted uppercase tracking-[0.14em]">
               Earlier
             </p>
-            {earlier.map((n) => (
-              <NotifRow
-                key={n.id}
-                n={n}
-                onRead={() => markRead(n.id)}
-                onDelete={() => void removeNotification(n.id)}
-              />
-            ))}
+            <StaggerList>
+              {earlier.map((n) => (
+                <StaggerItem key={n.id}>
+                  <NotifRow
+                    n={n}
+                    onRead={() => markRead(n.id)}
+                    onDelete={() => void removeNotification(n.id)}
+                  />
+                </StaggerItem>
+              ))}
+            </StaggerList>
           </div>
         )}
-      </div>
+      </PageEnter>
 
       <BottomNav />
     </div>
@@ -198,17 +237,21 @@ function NotifRow({
 
   return (
     <div
-      className={`w-full flex items-center gap-3 px-5 py-3.5 text-left ${!n.is_read ? "bg-primary-light/40" : ""}`}
+      className={`mx-4 mb-2.5 flex items-center gap-3 px-4 py-3.5 rounded-[24px] border transition-colors ${
+        !n.is_read
+          ? "bg-gradient-to-r from-primary-light/80 to-white border-primary/20 shadow-soft"
+          : "bg-white/95 border-white shadow-card"
+      }`}
     >
       <button
         type="button"
         onClick={() => {
           if (!n.is_read) onRead();
         }}
-        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+        className="flex items-center gap-3 flex-1 min-w-0 text-left pressable"
       >
         <div className="relative shrink-0">
-          <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center text-lg font-bold text-primary">
+          <div className="w-14 h-14 rounded-2xl bg-primary-light flex items-center justify-center text-lg font-bold text-primary border border-primary/10">
             {n.header.charAt(0).toUpperCase()}
           </div>
           <span
@@ -237,7 +280,7 @@ function NotifRow({
         type="button"
         aria-label="Delete notification"
         onClick={onDelete}
-        className="w-9 h-9 rounded-full bg-[#F5F5F5] flex items-center justify-center shrink-0 hover:bg-rose-50 transition-colors"
+        className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center shrink-0 hover:bg-rose-100 pressable transition-colors"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
           <path

@@ -13,7 +13,7 @@ const GENERAL_FAQS = [
   },
   {
     q: "How do I unmatch someone?",
-    a: "Go to your Matches page, tap on the match you want to remove, and select 'Unmatch'. The conversation will be removed from both sides.",
+    a: "Open the chat, tap the ⋮ menu, and choose Unmatch. Or go to Match and tap Unmatch on their card. The match and conversation are removed for both of you.",
   },
   {
     q: "Is LetsMeet free?",

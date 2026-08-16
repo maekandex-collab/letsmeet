@@ -14,11 +14,11 @@ interface BackHeaderProps {
 export function BackHeader({ title, subtitle, right, onBack, backHref }: BackHeaderProps) {
   const router = useRouter();
   return (
-    <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile px-4 py-4 flex items-center justify-between z-50 pt-safe">
+    <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-mobile px-4 py-3.5 flex items-center justify-between z-50 pt-safe bg-white/88 backdrop-blur-xl border-b border-primary/10 shadow-header">
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
-          onClick={() => onBack ? onBack() : backHref ? router.push(backHref) : router.back()}
-          className="w-10 h-10 flex items-center justify-center flex-shrink-0 rounded-2xl bg-[#F5F5F5] hover:bg-[#EBEBEB] transition-colors"
+          onClick={() => (onBack ? onBack() : backHref ? router.push(backHref) : router.back())}
+          className="w-10 h-10 flex items-center justify-center flex-shrink-0 rounded-2xl bg-primary-light/70 hover:bg-primary-light pressable transition-colors"
           aria-label="Go back"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -44,10 +44,10 @@ interface LogoHeaderProps {
 export function LogoHeader({ right }: LogoHeaderProps) {
   return (
     <header className="app-header">
-      <Link href="/home" className="flex items-center">
+      <Link href="/home" className="flex items-center pressable">
         <LetsMeetLogo size={32} showWordmark priority />
       </Link>
-      {right && <div className="flex items-center gap-3">{right}</div>}
+      {right && <div className="flex items-center gap-2.5">{right}</div>}
     </header>
   );
 }

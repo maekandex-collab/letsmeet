@@ -266,10 +266,13 @@ export default function HomePage() {
   const stampOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
 
   return (
-    <div className="mobile-shell flex flex-col bg-white overflow-hidden" style={{ height: "100dvh" }}>
+    <div className="mobile-shell flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
       <LogoHeader
         right={
-          <Link href="/filter" className="w-10 h-10 flex items-center justify-center rounded-full bg-primary-light">
+          <Link
+            href="/filter"
+            className="w-10 h-10 flex items-center justify-center rounded-2xl bg-primary-light/80 border border-primary/10 pressable shadow-soft"
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="#F759F5" strokeWidth="2" strokeLinejoin="round" />
             </svg>
@@ -278,13 +281,16 @@ export default function HomePage() {
       />
 
       <div className="flex flex-col px-3 sm:px-4 pt-header pb-bottom-nav h-dvh">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 animate-fade-up">
           <div>
-            <h2 className="text-lg font-bold text-dark">Discover</h2>
-            <p className="text-xs text-muted mt-0.5">Swipe right to like · left to pass</p>
+            <p className="section-kicker mb-1">Discover</p>
+            <h2 className="text-2xl font-bold text-dark leading-none">People near you</h2>
+            <p className="text-xs text-muted mt-1.5">Swipe right to like · left to pass</p>
           </div>
           {cards.length > 0 && (
-            <span className="text-xs font-semibold text-muted">{cards.length} nearby</span>
+            <span className="text-[11px] font-bold text-primary bg-primary-light px-3 py-1.5 rounded-full border border-primary/15">
+              {cards.length} nearby
+            </span>
           )}
         </div>
 
@@ -303,8 +309,12 @@ export default function HomePage() {
           style={{ height: "clamp(340px, 56dvh, 520px)", touchAction: "none" }}
         >
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-muted text-sm">Finding people near you…</p>
+            <div className="absolute inset-0 rounded-[28px] overflow-hidden border border-primary/10 bg-white shadow-card">
+              <div className="h-full skeleton-shimmer" />
+              <div className="absolute inset-x-0 bottom-0 p-5">
+                <div className="h-5 w-40 rounded-full bg-white/70 mb-2" />
+                <div className="h-3 w-24 rounded-full bg-white/55" />
+              </div>
             </div>
           )}
 
@@ -399,8 +409,8 @@ export default function HomePage() {
                   onLostPointerCapture={isTop ? onLostPointerCapture : undefined}
                 >
                   <div
-                    className="relative rounded-[28px] overflow-hidden h-full bg-[#151515]"
-                    style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}
+                    className="relative rounded-[28px] overflow-hidden h-full bg-[#151515] ring-1 ring-white/20"
+                    style={{ boxShadow: "0 16px 40px rgba(62,54,237,0.18)" }}
                   >
                     <ProfilePhoto
                       photo={photo}
@@ -469,7 +479,7 @@ export default function HomePage() {
               onClick={() => handleSwipe("left")}
               disabled={animating}
               aria-label="Pass"
-              className="w-14 h-14 rounded-full border-2 border-border bg-white shadow-card flex items-center justify-center active:scale-90 transition-transform disabled:opacity-60"
+              className="w-14 h-14 rounded-full border border-red-100 bg-white shadow-card flex items-center justify-center pressable disabled:opacity-60"
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                 <path d="M18 6L6 18M6 6L18 18" stroke="#F75959" strokeWidth="2.5" strokeLinecap="round" />
@@ -481,8 +491,8 @@ export default function HomePage() {
               onClick={() => handleSwipe("right")}
               disabled={animating}
               aria-label="Like"
-              className="w-[68px] h-[68px] rounded-full bg-primary flex items-center justify-center active:scale-90 transition-transform disabled:opacity-60"
-              style={{ boxShadow: "0 8px 24px rgba(247,89,245,0.45)" }}
+              className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-primary to-[#d946ef] flex items-center justify-center pressable disabled:opacity-60"
+              style={{ boxShadow: "0 12px 28px rgba(247,89,245,0.42)" }}
             >
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="white" />

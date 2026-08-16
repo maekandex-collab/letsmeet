@@ -24,7 +24,7 @@ export default function ChatComposer({
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 w-full max-w-mobile z-50 bg-white border-t border-border"
+      className="fixed left-1/2 -translate-x-1/2 w-full max-w-mobile z-50 bg-white/90 backdrop-blur-xl border-t border-primary/10 shadow-[0_-8px_28px_rgba(42,20,54,0.08)]"
       style={{
         bottom: keyboardOffset,
         transition: keyboardOffset > 0 ? "bottom 0.1s ease-out" : undefined,
@@ -32,7 +32,7 @@ export default function ChatComposer({
     >
       {error && <p className="px-4 pt-2 text-xs text-red-500">{error}</p>}
       <div
-        className="px-4 py-3 flex items-center gap-2"
+        className="px-3 py-3 flex items-center gap-2"
         style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
       >
         <input
@@ -49,13 +49,13 @@ export default function ChatComposer({
           placeholder="Type a message..."
           inputMode="text"
           enterKeyHint="send"
-          className="flex-1 h-11 px-4 rounded-2xl bg-border text-[15px] text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+          className="flex-1 h-12 px-4 rounded-[24px] bg-[#f4eef6] border border-primary/10 text-[15px] text-dark placeholder-muted focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/25 transition-all"
         />
         <button
           type="button"
           onClick={onSend}
           disabled={!canSend}
-          className="w-11 h-11 rounded-full bg-primary flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 flex-shrink-0"
+          className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-[#d946ef] shadow-[0_6px_16px_rgba(247,89,245,0.3)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform disabled:opacity-40 disabled:shadow-none flex-shrink-0"
           aria-label="Send message"
         >
           {sending ? (
