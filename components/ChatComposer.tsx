@@ -1,7 +1,5 @@
 "use client";
 
-import { useVisualViewport } from "@/lib/useVisualViewport";
-
 interface ChatComposerProps {
   value: string;
   onChange: (value: string) => void;
@@ -9,6 +7,8 @@ interface ChatComposerProps {
   sending?: boolean;
   error?: string;
   onFocus?: () => void;
+  /** When the keyboard is open, drop home-indicator padding so the bar sits flush. */
+  keyboardOpen?: boolean;
 }
 
 export default function ChatComposer({
@@ -18,22 +18,20 @@ export default function ChatComposer({
   sending = false,
   error,
   onFocus,
+  keyboardOpen = false,
 }: ChatComposerProps) {
-  const { keyboardOffset } = useVisualViewport();
   const canSend = value.trim().length > 0 && !sending;
 
   return (
-    <div
-      className="fixed left-1/2 -translate-x-1/2 w-full max-w-mobile z-50 bg-white/90 backdrop-blur-xl border-t border-primary/10 shadow-[0_-8px_28px_rgba(42,20,54,0.08)]"
-      style={{
-        bottom: keyboardOffset,
-        transition: keyboardOffset > 0 ? "bottom 0.1s ease-out" : undefined,
-      }}
-    >
+    <div className="relative z-20 w-full flex-shrink-0 bg-white/95 backdrop-blur-xl border-t border-primary/10 shadow-[0_-8px_28px_rgba(42,20,54,0.08)]">
       {error && <p className="px-4 pt-2 text-xs text-red-500">{error}</p>}
       <div
-        className="px-3 py-3 flex items-center gap-2"
-        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+        className="px-3 pt-2.5 flex items-center gap-2"
+        style={{
+          paddingBottom: keyboardOpen
+            ? "0.625rem"
+            : "calc(0.625rem + env(safe-area-inset-bottom, 0px))",
+        }}
       >
         <input
           type="text"
@@ -49,13 +47,15 @@ export default function ChatComposer({
           placeholder="Type a message..."
           inputMode="text"
           enterKeyHint="send"
-          className="flex-1 h-12 px-4 rounded-[24px] bg-[#f4eef6] border border-primary/10 text-[15px] text-dark placeholder-muted focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/25 transition-all"
+          autoComplete="off"
+          autoCorrect="on"
+          className="flex-1 h-11 px-4 rounded-[22px] bg-[#f4eef6] border border-primary/10 text-[16px] text-dark placeholder-muted focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/25 transition-all"
         />
         <button
           type="button"
           onClick={onSend}
           disabled={!canSend}
-          className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-[#d946ef] shadow-[0_6px_16px_rgba(247,89,245,0.3)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform disabled:opacity-40 disabled:shadow-none flex-shrink-0"
+          className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-[#d946ef] shadow-[0_6px_16px_rgba(247,89,245,0.3)] flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 disabled:shadow-none flex-shrink-0"
           aria-label="Send message"
         >
           {sending ? (

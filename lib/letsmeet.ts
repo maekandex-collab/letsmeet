@@ -1964,7 +1964,7 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
         text,
         time,
         at: Number.isFinite(at) ? at : Date.now() + index,
-        delivery: from === "me" ? (m.is_read ? "read" : "sent") : undefined,
+        delivery: from === "me" ? "sent" : undefined,
       };
       if (typeof m.is_read === "boolean") {
         message.isRead = m.is_read;

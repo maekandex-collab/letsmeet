@@ -64,6 +64,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: "#b5179e",
+  // Lets the layout resize with the keyboard on supporting browsers (Android Chrome).
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

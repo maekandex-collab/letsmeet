@@ -39,11 +39,9 @@ import {
 } from "@/lib/chatInbox";
 import ChatComposer from "@/components/ChatComposer";
 import Avatar from "@/components/Avatar";
+import { useVisualViewport } from "@/lib/useVisualViewport";
 
 type ChatMessage = StoredChatMessage;
-
-const COMPOSER_OFFSET =
-  "calc(var(--composer-h) + env(safe-area-inset-bottom, 0px) + 0.75rem)";
 
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -67,25 +65,9 @@ function MessageTicks({ message }: { message: ChatMessage }) {
   if (message.delivery === "failed") {
     return <span className="font-bold text-red-200" aria-label="Failed to send">!</span>;
   }
-  const read = message.delivery === "read" || message.isRead === true;
-  if (!read) {
-    return (
-      <svg width="13" height="11" viewBox="0 0 14 12" fill="none" className="text-white/70" aria-label="Sent">
-        <path d="M1.2 6 4.6 9.3 12.4 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
   return (
-    <svg
-      width="16"
-      height="12"
-      viewBox="0 0 20 14"
-      fill="none"
-      className={read ? "text-cyan-200" : "text-white/70"}
-      aria-label="Read"
-    >
-      <path d="M1.5 7.2 5 10.5 11.3 3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="m8.3 9.8 1 .7 8-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="13" height="11" viewBox="0 0 14 12" fill="none" className="text-white/70" aria-label="Sent">
+      <path d="M1.2 6 4.6 9.3 12.4 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -110,8 +92,10 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   const [peerLoading, setPeerLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string>("");
   const peerTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { keyboardOpen, height: viewportHeight, offsetTop } = useVisualViewport();
 
   const storageKey = String(roomId);
 
@@ -121,8 +105,18 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   );
 
   const scrollBottom = useCallback((smooth = true) => {
-    requestAnimationFrame(() => scrollToBottom(bottomRef.current, smooth));
+    requestAnimationFrame(() => {
+      scrollToBottom(bottomRef.current, smooth);
+      const list = listRef.current;
+      if (list) {
+        list.scrollTop = list.scrollHeight;
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (keyboardOpen) scrollBottom(false);
+  }, [keyboardOpen, scrollBottom]);
 
   useEffect(() => {
     markRoomRead(roomId);
@@ -448,9 +442,20 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   };
 
   return (
-    <div className="mobile-shell flex flex-col min-h-dvh bg-[#f8f3fa]">
-      <div className="pointer-events-none fixed inset-0 left-1/2 -translate-x-1/2 w-full max-w-mobile chat-wallpaper" />
-      <header className="app-header flex items-center gap-2.5 !bg-white/90 backdrop-blur-xl border-b border-primary/10">
+    <div
+      className="mobile-shell flex flex-col bg-[#f8f3fa] overflow-hidden"
+      style={{
+        position: "fixed",
+        left: "50%",
+        transform: "translateX(-50%)",
+        top: offsetTop,
+        height: viewportHeight ?? "100dvh",
+        width: "100%",
+        maxWidth: "600px",
+      }}
+    >
+      <div className="pointer-events-none absolute inset-0 chat-wallpaper" />
+      <header className="relative z-20 flex items-center gap-2.5 px-4 py-3 bg-white/95 backdrop-blur-xl border-b border-primary/10 flex-shrink-0 pt-safe">
         <Link
           href="/messages"
           className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-border transition-colors flex-shrink-0"
@@ -574,8 +579,8 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
       </header>
 
       <div
-        className="relative z-[1] flex-1 overflow-y-auto px-3 pt-header space-y-1.5"
-        style={{ paddingBottom: COMPOSER_OFFSET }}
+        ref={listRef}
+        className="relative z-[1] flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pt-3 space-y-1.5"
       >
         {historyLoading && messages.length === 0 && (
           <div className="space-y-3 mt-4">
@@ -649,7 +654,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
             </div>
           </div>
         )}
-        <div ref={bottomRef} className="h-1 scroll-mb-24" />
+        <div ref={bottomRef} className="h-1" />
       </div>
 
       <ChatComposer
@@ -658,7 +663,8 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         onSend={() => void handleSend()}
         sending={sending}
         error={error}
-        onFocus={() => scrollBottom()}
+        keyboardOpen={keyboardOpen}
+        onFocus={() => scrollBottom(false)}
       />
     </div>
   );
