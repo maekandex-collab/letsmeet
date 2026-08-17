@@ -15,6 +15,10 @@ import {
   isCallAccepted,
   takePendingCallOffer,
 } from "@/lib/incomingCall";
+import {
+  DEFAULT_ICE_SERVERS,
+  hasUsableTurn,
+} from "@/lib/iceServers";
 
 const VIDEO_CAPTURE: MediaTrackConstraints = {
   width: { ideal: 176, max: 176 },
@@ -25,22 +29,33 @@ const VIDEO_CAPTURE: MediaTrackConstraints = {
 const VIDEO_MAX_BITRATE = 150_000;
 const VIDEO_MAX_FRAMERATE = 15;
 
-const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  {
-    urls: ["turn:turner.lenhub.net:3478?transport=udp"],
-    username: "webrtc",
-    credential: "YourStrongPassword123!",
-  },
-];
+async function fetchEnvIceServers(): Promise<RTCIceServer[] | null> {
+  try {
+    const res = await fetch("/api/ice-servers", { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { iceServers?: RTCIceServer[] };
+    if (data.iceServers?.length && hasUsableTurn(data.iceServers)) {
+      return data.iceServers;
+    }
+  } catch {
+    // ignore — fall through to defaults
+  }
+  return null;
+}
 
 async function resolveIceServers(): Promise<RTCIceServer[]> {
   try {
     const config = await getVideoAudio();
-    if (config.iceServers?.length) return config.iceServers;
+    // Only trust upstream ICE if TURN includes username+credential.
+    if (config.iceServers?.length && hasUsableTurn(config.iceServers)) {
+      return config.iceServers;
+    }
   } catch {
-    // Best-effort — fall back to defaults.
+    // Best-effort — try env / defaults below.
   }
+
+  const fromEnv = await fetchEnvIceServers();
+  if (fromEnv) return fromEnv;
   return DEFAULT_ICE_SERVERS;
 }
 
@@ -136,6 +151,9 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
   const audioOnlyRef = useRef(false);
   const acceptIncomingRef = useRef(false);
 
+  const peerCreateInflightRef = useRef<Promise<RTCPeerConnection> | null>(null);
+  const answerAppliedRef = useRef(false);
+
   useEffect(() => {
     inCallRef.current = inCall;
   }, [inCall]);
@@ -184,54 +202,66 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
 
   const createPeer = useCallback(async (isAudioOnly: boolean) => {
     if (peerRef.current) return peerRef.current;
+    if (peerCreateInflightRef.current) return peerCreateInflightRef.current;
 
-    const stream = await initMedia(isAudioOnly);
-    const iceServers = await resolveIceServers();
-    const rtcConfig: RTCConfiguration = {
-      iceServers,
-      iceTransportPolicy: "all",
-    };
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerRef.current = pc;
+    peerCreateInflightRef.current = (async () => {
+      if (peerRef.current) return peerRef.current;
 
-    const remote = new MediaStream();
-    remoteStreamRef.current = remote;
-    setRemoteStream(remote);
-    attachRemoteToPip(remote);
+      const stream = await initMedia(isAudioOnly);
+      const iceServers = await resolveIceServers();
+      const pc = new RTCPeerConnection({
+        iceServers,
+        iceTransportPolicy: "all",
+      });
+      peerRef.current = pc;
 
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-    pc.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => remote.addTrack(track));
+      const remote = new MediaStream();
+      remoteStreamRef.current = remote;
       setRemoteStream(remote);
       attachRemoteToPip(remote);
-    };
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(
-          JSON.stringify({ type: "ice", candidate: event.candidate })
-        );
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        event.streams[0]?.getTracks().forEach((track) => remote.addTrack(track));
+        setRemoteStream(remote);
+        attachRemoteToPip(remote);
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && socketRef.current?.readyState === WebSocket.OPEN) {
+          socketRef.current.send(
+            JSON.stringify({ type: "ice", candidate: event.candidate })
+          );
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          setStatus("Connected");
+          setInCall(true);
+          setIncomingCall(false);
+          stopRetry();
+          void applyVideoSenderLimits(pc);
+        } else if (pc.connectionState === "failed") {
+          setStatus("Connection failed");
+        } else if (pc.connectionState === "disconnected") {
+          setStatus("Reconnecting…");
+        } else if (pc.connectionState !== "closed") {
+          setStatus(pc.connectionState);
+        }
+      };
+
+      return pc;
+    })();
+
+    const inflight = peerCreateInflightRef.current;
+    void inflight.finally(() => {
+      if (peerCreateInflightRef.current === inflight) {
+        peerCreateInflightRef.current = null;
       }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") {
-        setStatus("Connected");
-        setInCall(true);
-        setIncomingCall(false);
-        stopRetry();
-        void applyVideoSenderLimits(pc);
-      } else if (pc.connectionState === "failed") {
-        setStatus("Connection failed");
-      } else if (pc.connectionState === "disconnected") {
-        setStatus("Reconnecting…");
-      } else if (pc.connectionState !== "closed") {
-        setStatus(pc.connectionState);
-      }
-    };
-
-    return pc;
+    });
+    return inflight;
   }, [initMedia, stopRetry, attachRemoteToPip]);
 
   const answerOffer = useCallback(
@@ -240,6 +270,10 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       try {
         const pc = await createPeer(audioOnlyRef.current);
+        // Already negotiated — ignore duplicate offers from caller retry loop.
+        if (pc.signalingState === "stable" && pc.currentRemoteDescription) {
+          return;
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = mungeSessionDescription(await pc.createAnswer());
         await pc.setLocalDescription(answer);
@@ -270,6 +304,8 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
 
     peerRef.current?.close();
     peerRef.current = null;
+    peerCreateInflightRef.current = null;
+    answerAppliedRef.current = false;
 
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
@@ -310,14 +346,38 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
 
     const existing = peerRef.current;
-    if (existing?.localDescription) {
+    // Negotiation already complete — do not re-send offers (causes duplicate
+    // answers → InvalidStateError: setRemoteDescription in stable).
+    if (
+      existing &&
+      answerAppliedRef.current &&
+      existing.signalingState === "stable" &&
+      existing.remoteDescription
+    ) {
+      return true;
+    }
+    if (existing?.localDescription && existing.signalingState === "have-local-offer") {
       ws.send(
-        JSON.stringify({ type: "offer", offer: existing.localDescription.toJSON(), audioOnly: audioOnlyRef.current })
+        JSON.stringify({
+          type: "offer",
+          offer: existing.localDescription.toJSON(),
+          audioOnly: audioOnlyRef.current,
+        })
       );
       return true;
     }
 
     const pc = await createPeer(audioOnlyRef.current);
+    if (pc.localDescription) {
+      ws.send(
+        JSON.stringify({
+          type: "offer",
+          offer: pc.localDescription.toJSON(),
+          audioOnly: audioOnlyRef.current,
+        })
+      );
+      return true;
+    }
     const offer = mungeSessionDescription(await pc.createOffer());
     await pc.setLocalDescription(offer);
     await applyVideoSenderLimits(pc);
@@ -390,10 +450,14 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
           }
         } else if (data.type === "answer" && data.answer) {
           const pc = peerRef.current;
-          if (pc) {
+          if (!pc || pc.signalingState !== "have-local-offer") return;
+          try {
             await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-            setStatus("Connected");
+            answerAppliedRef.current = true;
+            setStatus("Connecting…");
             stopRetry();
+          } catch {
+            // Ignore stale/duplicate answers.
           }
         } else if (data.type === "reject") {
           stopRetry();
