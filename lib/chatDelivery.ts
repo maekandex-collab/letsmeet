@@ -1,4 +1,5 @@
 import { bumpIncoming } from "@/lib/chatInbox";
+import { formatGamePreview } from "@/lib/gameChallenge";
 import type { WsIncomingMessage } from "@/lib/chatWs";
 import {
   isOwnSenderId,
@@ -52,7 +53,8 @@ export function notifyIncomingChat(
   if (!("Notification" in window) || Notification.permission !== "granted") return;
 
   try {
-    const body = text.length > 120 ? `${text.slice(0, 117)}…` : text;
+    const bodyText = formatGamePreview(text);
+    const body = bodyText.length > 120 ? `${bodyText.slice(0, 117)}…` : bodyText;
     new Notification(peerName ? `New message from ${peerName}` : "New message", {
       body,
       tag: `lm-chat-${peerName}`,

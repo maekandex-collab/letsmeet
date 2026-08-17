@@ -2,6 +2,7 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import UnreadBadge from "@/components/UnreadBadge";
 import { formatRelativeTime, type ChatInboxEntry } from "@/lib/chatInbox";
+import { formatGamePreview } from "@/lib/gameChallenge";
 import { buildChatHref, stashChatPeer, type ProfileCard } from "@/lib/letsmeet";
 
 interface ConversationRowProps {
@@ -11,11 +12,12 @@ interface ConversationRowProps {
 
 export default function ConversationRow({ match, inbox }: ConversationRowProps) {
   const unread = inbox?.unreadCount ?? 0;
-  const lastText =
+  const lastText = formatGamePreview(
     inbox?.lastText ||
-    (match.location && match.location.toLowerCase() !== "string"
-      ? match.location
-      : "Tap to start chatting");
+      (match.location && match.location.toLowerCase() !== "string"
+        ? match.location
+        : "Tap to start chatting")
+  );
   const lastAt = inbox?.lastAt ?? 0;
 
   return (

@@ -39,7 +39,14 @@ import {
 } from "@/lib/chatInbox";
 import ChatComposer from "@/components/ChatComposer";
 import Avatar from "@/components/Avatar";
+import GameChallengeCard from "@/components/GameChallengeCard";
 import { useVisualViewport } from "@/lib/useVisualViewport";
+import { GAMES, type GameSlug } from "@/lib/games";
+import {
+  createChallengeId,
+  encodeChallenge,
+  parseGameChallenge,
+} from "@/lib/gameChallenge";
 
 type ChatMessage = StoredChatMessage;
 
@@ -87,6 +94,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [unmatching, setUnmatching] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [peerLoading, setPeerLoading] = useState(true);
@@ -370,15 +378,15 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     }
   }
 
-  async function handleSend() {
-    const text = input.trim();
-    if (!text || sending) return;
+  async function sendChatText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
     setError("");
 
     const optimistic: ChatMessage = {
       id: Date.now(),
       from: "me",
-      text,
+      text: trimmed,
       time: nowTime(),
       at: Date.now(),
       isRead: false,
@@ -386,18 +394,17 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     };
     setMessages((prev) => {
       const next = [...prev, optimistic];
-      bumpOutgoing(roomId, text, optimistic.at, peerMeta());
+      bumpOutgoing(roomId, trimmed, optimistic.at, peerMeta());
       syncInboxFromMessages(roomId, next, peerMeta());
       saveChatMessages(storageKey, next);
       return next;
     });
-    setInput("");
-    lastSentRef.current = text;
+    lastSentRef.current = trimmed;
     scrollBottom();
 
     setSending(true);
     try {
-      const res = await sendMessage(text, roomId);
+      const res = await sendMessage(trimmed, roomId);
       if (!res.ok || res.data?.error) {
         setError(extractError(res.data, "Message failed to save."));
         setMessages((prev) =>
@@ -432,6 +439,18 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    await sendChatText(text);
+  }
+
+  async function handleChallenge(slug: GameSlug) {
+    setGamePickerOpen(false);
+    await sendChatText(encodeChallenge(slug, createChallengeId()));
   }
 
   const showDateSeparator = (index: number) => {
@@ -610,6 +629,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
           const next = messages[index + 1];
           const startsGroup = !previous || previous.from !== msg.from || showDateSeparator(index);
           const endsGroup = !next || next.from !== msg.from;
+          const challenge = parseGameChallenge(msg.text);
           return (
           <div key={msg.id}>
             {showDateSeparator(index) && (
@@ -625,6 +645,14 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
               {msg.from === "them" && endsGroup ? (
                 <Avatar photo={photo} name={name} size="sm" className="!w-8 !h-8 text-[10px] mb-1" />
               ) : msg.from === "them" ? <span className="w-8 flex-shrink-0" /> : null}
+              {challenge ? (
+                <GameChallengeCard
+                  payload={challenge}
+                  fromMe={msg.from === "me"}
+                  roomId={roomId}
+                  time={msg.time}
+                />
+              ) : (
               <div
                 className={`max-w-[79%] px-4 py-2.5 text-[15px] leading-6 scroll-mb-24 transition-all ${
                   msg.from === "me"
@@ -638,6 +666,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
                   <MessageTicks message={msg} />
                 </div>
               </div>
+              )}
             </div>
           </div>
         )})}
@@ -665,7 +694,52 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         error={error}
         keyboardOpen={keyboardOpen}
         onFocus={() => scrollBottom(false)}
+        onOpenGames={() => setGamePickerOpen(true)}
       />
+
+      {gamePickerOpen && (
+        <>
+          <div
+            className="absolute inset-0 z-30 bg-black/35"
+            onClick={() => setGamePickerOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 z-40 rounded-t-3xl bg-white px-5 pt-4 pb-safe shadow-card">
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <p className="section-kicker mb-0.5">Icebreaker</p>
+                <h2 className="text-lg font-bold text-dark">Challenge to a game</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGamePickerOpen(false)}
+                className="w-8 h-8 rounded-full bg-border flex items-center justify-center"
+                aria-label="Close"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="#12151C" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs text-muted mb-3">
+              They get a card in chat. Each of you plays on your own device, then shares a score.
+            </p>
+            <div className="grid grid-cols-2 gap-2 pb-4">
+              {GAMES.map((game) => (
+                <button
+                  key={game.slug}
+                  type="button"
+                  onClick={() => void handleChallenge(game.slug)}
+                  className="text-left rounded-2xl border border-primary/10 bg-surface p-3 pressable"
+                >
+                  <span className="text-2xl">{game.emoji}</span>
+                  <p className="text-sm font-bold text-dark mt-1">{game.title}</p>
+                  <p className="text-[11px] text-muted">{game.tagline}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

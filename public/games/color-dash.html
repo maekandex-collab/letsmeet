@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>🌈 Color Dash – Fluid Drag</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            background: #0a0a12;
+            background: radial-gradient(ellipse at center, #1a1a2e, #0a0a12);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+        #game {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            height: 100vh;
+            max-height: 780px;
+            background: linear-gradient(180deg, #0f0f1a, #06060c);
+            border-radius: 32px;
+            overflow: hidden;
+            box-shadow: 0 20px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 200, 50, 0.06);
+            margin: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        @media (max-width:440px) {
+            #game {
+                max-height: 100vh;
+                border-radius: 0;
+                margin: 0;
+                max-width: 100%;
+            }
+        }
+
+        #top-bar {
+            padding: 14px 20px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            z-index: 10;
+            background: transparent;
+            pointer-events: none;
+        }
+        #top-bar>* {
+            pointer-events: auto;
+        }
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #f5c542, #ff6b9d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stats {
+            display: flex;
+            gap: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .stats span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stats .num {
+            color: #fff;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        #canvas-wrap {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            margin: 0 8px 8px;
+            border-radius: 24px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            touch-action: none;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: grab;
+        }
+        #gameCanvas:active {
+            cursor: grabbing;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            flex-direction: column;
+            border-radius: 24px;
+            animation: fadeIn 0.4s ease;
+        }
+        .overlay.active {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .overlay-box {
+            text-align: center;
+            padding: 28px 24px 32px;
+            max-width: 300px;
+            width: 85%;
+            background: rgba(20, 20, 40, 0.85);
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 16px 60px rgba(0, 0, 0, 0.5);
+        }
+        .overlay-box .emoji-big {
+            font-size: 64px;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .overlay-box h2 {
+            font-size: 30px;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 2px;
+        }
+        .overlay-box .sub {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 15px;
+            margin-bottom: 16px;
+        }
+        .overlay-box .btn-main {
+            padding: 14px 44px;
+            border: none;
+            border-radius: 30px;
+            font-size: 17px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f5c542, #ff6b9d);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 6px 30px rgba(255, 107, 157, 0.2);
+            touch-action: manipulation;
+        }
+        .overlay-box .btn-main:active {
+            transform: scale(0.92);
+        }
+        .overlay-box .final-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 12px 0 20px;
+        }
+        .overlay-box .final-stat {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 8px 4px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .overlay-box .final-stat .val {
+            font-size: 26px;
+            font-weight: 800;
+            color: #fff;
+            display: block;
+        }
+        .overlay-box .final-stat .label {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .overlay-box .final-stat .val.high-score {
+            color: #f5c542;
+        }
+
+        #particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 20;
+            overflow: hidden;
+            border-radius: 24px;
+        }
+        .particle {
+            position: absolute;
+            font-size: 20px;
+            animation: floatUp 1.2s ease-out forwards;
+            opacity: 0;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(0, 0) scale(0.5) rotate(0deg); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.4) rotate(360deg); }
+        }
+
+        @media(max-height:700px) {
+            .logo { font-size: 16px; }
+            .stats { font-size: 13px; gap: 12px; }
+            .overlay-box h2 { font-size: 24px; }
+            .overlay-box .emoji-big { font-size: 48px; }
+            .overlay-box .btn-main { padding: 12px 32px; font-size: 15px; }
+        }
+        @media(max-height:600px) {
+            #top-bar { padding: 8px 16px 4px; }
+            .logo { font-size: 14px; }
+            .stats { font-size: 12px; gap: 10px; }
+            .overlay-box { padding: 20px 16px 24px; }
+        }
+
+        .drag-arrow {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.1);
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            pointer-events: none;
+            z-index: 5;
+            animation: pulseText 2s ease-in-out infinite;
+        }
+        @keyframes pulseText {
+            0%, 100% { opacity: 0.1; }
+            50% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <!-- Top bar -->
+        <div id="top-bar">
+            <div class="logo">🌈 Color Dash</div>
+            <div class="stats">
+                <span>🏆 <span class="num" id="scoreDisplay">0</span></span>
+                <span>💯 <span class="num" id="highDisplay">0</span></span>
+            </div>
+        </div>
+
+        <!-- Canvas Wrap -->
+        <div id="canvas-wrap">
+            <canvas id="gameCanvas"></canvas>
+            <div id="particles"></div>
+            <div class="drag-arrow">↕ Drag to move ↕</div>
+
+            <!-- Start overlay -->
+            <div class="overlay active" id="startOverlay">
+                <div class="overlay-box">
+                    <span class="emoji-big">🌈</span>
+                    <h2>Color Dash</h2>
+                    <p class="sub">Drag the ball left & right<br/>Match the barrier color to pass!</p>
+                    <button class="btn-main" id="startBtn" onclick="startGame()">▶ Play</button>
+                </div>
+            </div>
+
+            <!-- Game Over overlay -->
+            <div class="overlay" id="gameoverOverlay">
+                <div class="overlay-box">
+                    <span class="emoji-big" id="goEmoji">💔</span>
+                    <h2 id="goTitle">Game Over</h2>
+                    <p class="sub" id="goSub">You hit the wrong color!</p>
+                    <div class="final-stats">
+                        <div class="final-stat">
+                            <span class="val" id="finalScore">0</span>
+                            <span class="label">Score</span>
+                        </div>
+                        <div class="final-stat">
+                            <span class="val high-score" id="finalHigh">0</span>
+                            <span class="label">Best</span>
+                        </div>
+                    </div>
+                    <button class="btn-main" id="restartBtn" onclick="startGame()">🔄 Try Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CANVAS SETUP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrap = document.getElementById('canvas-wrap');
+
+        let W, H;
+
+        function resize() {
+            const rect = wrap.getBoundingClientRect();
+            W = rect.width;
+            H = rect.height;
+            canvas.width = W;
+            canvas.height = H;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  AUDIO (Web Audio)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+                } catch (_) {}
+            }
+        }
+
+        function playTone(freq, duration, type = 'sine', vol = 0.10) {
+            try {
+                if (!audioCtx) initAudio();
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (_) {}
+        }
+
+        function playPass() {
+            playTone(523, 0.10, 'sine', 0.08);
+            setTimeout(() => playTone(659, 0.10, 'sine', 0.08), 100);
+        }
+
+        function playFail() {
+            playTone(300, 0.30, 'sawtooth', 0.05);
+        }
+
+        function playGameOver() {
+            playTone(500, 0.20, 'sine', 0.06);
+            setTimeout(() => playTone(400, 0.20, 'sine', 0.06), 200);
+            setTimeout(() => playTone(300, 0.40, 'sine', 0.06), 400);
+        }
+
+        function playScore() {
+            playTone(880, 0.08, 'sine', 0.06);
+            setTimeout(() => playTone(1100, 0.08, 'sine', 0.06), 70);
+        }
+
+        function playColorSwitch() {
+            playTone(440, 0.04, 'sine', 0.04);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME STATE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const COLORS = ['#ff4757', '#2ed573', '#1e90ff', '#ffa502', '#a55eea'];
+        const COLOR_NAMES = ['❤️', '💚', '💙', '🧡', '💜'];
+        const COLOR_LABELS = ['RED', 'GREEN', 'BLUE', 'ORANGE', 'PURPLE'];
+
+        const state = {
+            score: 0,
+            highScore: parseInt(localStorage.getItem('colorDashFluidHigh')) || 0,
+            isRunning: false,
+            isGameOver: false,
+
+            // Ball
+            ball: { x: 0, y: 0, radius: 20, colorIndex: 0 },
+
+            // Barriers
+            barriers: [],
+            barrierSpeed: 150,
+            speedMultiplier: 1,
+            spawnTimer: 0,
+            spawnInterval: 2.0,
+
+            // Drag control - ultra fluid
+            dragX: 0,
+            smoothX: 0,
+            velocityX: 0,
+            isDragging: false,
+        };
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  DOM REFS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const highDisplay = document.getElementById('highDisplay');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameoverOverlay = document.getElementById('gameoverOverlay');
+        const finalScore = document.getElementById('finalScore');
+        const finalHigh = document.getElementById('finalHigh');
+        const goEmoji = document.getElementById('goEmoji');
+        const goTitle = document.getElementById('goTitle');
+        const goSub = document.getElementById('goSub');
+        const particleContainer = document.getElementById('particles');
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  PARTICLES
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function spawnParticles(emoji, x, y, count = 12) {
+            const rect = wrap.getBoundingClientRect();
+            const cx = x;
+            const cy = y;
+            for (let i = 0; i < count; i++) {
+                const el = document.createElement('div');
+                el.className = 'particle';
+                el.textContent = emoji;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 30 + Math.random() * 60;
+                const tx = Math.cos(angle) * dist;
+                const ty = Math.sin(angle) * dist - 30;
+                el.style.setProperty('--tx', tx + 'px');
+                el.style.setProperty('--ty', ty + 'px');
+                el.style.left = (cx + (Math.random() - 0.5) * 20) + 'px';
+                el.style.top = (cy + (Math.random() - 0.5) * 20) + 'px';
+                el.style.fontSize = (14 + Math.random() * 22) + 'px';
+                el.style.animationDuration = (0.8 + Math.random() * 0.6) + 's';
+                el.style.animationDelay = (Math.random() * 0.2) + 's';
+                particleContainer.appendChild(el);
+                setTimeout(() => el.remove(), 1500);
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME LOGIC
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function resetGame() {
+            state.score = 0;
+            state.isRunning = false;
+            state.isGameOver = false;
+            state.barriers = [];
+            state.spawnTimer = 0;
+            state.speedMultiplier = 1;
+            state.ball.x = W / 2;
+            state.ball.y = H - 70;
+            state.ball.colorIndex = 0;
+            state.dragX = state.ball.x;
+            state.smoothX = state.ball.x;
+            state.velocityX = 0;
+            state.isDragging = false;
+            updateUI();
+        }
+
+        window.startGame = function() {
+            resetGame();
+            state.isRunning = true;
+            startOverlay.classList.remove('active');
+            gameoverOverlay.classList.remove('active');
+            updateUI();
+            initAudio();
+            // Reset ball position after resize
+            state.ball.x = W / 2;
+            state.dragX = state.ball.x;
+            state.smoothX = state.ball.x;
+        };
+
+        function gameOver() {
+            state.isRunning = false;
+            state.isGameOver = true;
+            playGameOver();
+
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('colorDashFluidHigh', String(state.highScore));
+            }
+
+            finalScore.textContent = state.score;
+            finalHigh.textContent = state.highScore;
+
+            if (state.score >= 25) {
+                goEmoji.textContent = '🏆';
+                goTitle.textContent = 'Dash Master!';
+                goSub.textContent = 'Flawless run!';
+            } else if (state.score >= 15) {
+                goEmoji.textContent = '🌈';
+                goTitle.textContent = 'Great Dash!';
+                goSub.textContent = 'You\'re on fire!';
+            } else if (state.score >= 5) {
+                goEmoji.textContent = '😊';
+                goTitle.textContent = 'Not Bad!';
+                goSub.textContent = 'Keep practicing!';
+            } else {
+                goEmoji.textContent = '💔';
+                goTitle.textContent = 'Game Over';
+                goSub.textContent = 'Try again!';
+            }
+
+            gameoverOverlay.classList.add('active');
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        source: 'lm-game',
+                        slug: 'color-dash',
+                        score: state.score,
+                        highScore: state.highScore
+                    }, window.location.origin);
+                }
+            } catch (e) {}
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = state.score;
+            highDisplay.textContent = state.highScore;
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  SPAWN BARRIER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function spawnBarrier() {
+            const gap = 60 + Math.random() * 40;
+            const y = -20;
+            const width = 40 + Math.random() * 30;
+            const colorIdx = Math.floor(Math.random() * COLORS.length);
+
+            const minGapCenter = 50;
+            const maxGapCenter = W - 50;
+            const gapCenter = minGapCenter + Math.random() * (maxGapCenter - minGapCenter);
+            const halfGap = gap / 2;
+
+            state.barriers.push({
+                y: y,
+                gapCenter: gapCenter,
+                gap: gap,
+                colorIdx: colorIdx,
+                passed: false,
+                leftBlock: { x: 0, w: gapCenter - halfGap },
+                rightBlock: { x: gapCenter + halfGap, w: W - (gapCenter + halfGap) },
+            });
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  UPDATE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let lastTime = 0;
+
+        function update(dt) {
+            if (!state.isRunning || state.isGameOver) return;
+
+            // Speed increase
+            state.speedMultiplier = 1 + (state.score / 35) * 1.2;
+            const speed = state.barrierSpeed * state.speedMultiplier;
+
+            // Smooth ball movement with fluid drag
+            const p = state.ball;
+            const diff = state.dragX - state.smoothX;
+            state.velocityX += diff * 8 * dt;
+            state.velocityX *= 0.85; // damping
+            state.smoothX += state.velocityX * dt * 60;
+
+            // Clamp
+            const minX = p.radius;
+            const maxX = W - p.radius;
+            state.smoothX = Math.max(minX, Math.min(maxX, state.smoothX));
+            state.dragX = Math.max(minX, Math.min(maxX, state.dragX));
+
+            // Apply to ball with slight lag for fluid feel
+            p.x += (state.smoothX - p.x) * 0.3;
+
+            // Spawn
+            state.spawnTimer += dt;
+            const interval = Math.max(0.6, state.spawnInterval - (state.score / 80) * 0.5);
+            if (state.spawnTimer >= interval) {
+                state.spawnTimer = 0;
+                spawnBarrier();
+            }
+
+            // Move barriers
+            for (let i = state.barriers.length - 1; i >= 0; i--) {
+                const barrier = state.barriers[i];
+                barrier.y += speed * dt;
+
+                // Check if ball passed through
+                if (!barrier.passed && barrier.y > p.y) {
+                    barrier.passed = true;
+                    const inGap = (p.x > barrier.gapCenter - barrier.gap / 2 + p.radius) &&
+                        (p.x < barrier.gapCenter + barrier.gap / 2 - p.radius);
+
+                    if (inGap && barrier.colorIdx === p.colorIndex) {
+                        // Passed successfully!
+                        state.score++;
+                        playPass();
+                        spawnParticles('✨', p.x, p.y, 8);
+                        updateUI();
+                    } else {
+                        // Failed
+                        playFail();
+                        spawnParticles('💥', p.x, p.y, 14);
+                        gameOver();
+                        return;
+                    }
+                }
+
+                // Remove off screen
+                if (barrier.y > H + 50) {
+                    state.barriers.splice(i, 1);
+                }
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  RENDER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function render() {
+            ctx.clearRect(0, 0, W, H);
+
+            // Draw barriers
+            for (const barrier of state.barriers) {
+                const y = barrier.y;
+                const color = COLORS[barrier.colorIdx];
+                const colorName = COLOR_LABELS[barrier.colorIdx];
+
+                // Left block
+                ctx.fillStyle = color;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 8;
+                ctx.fillRect(barrier.leftBlock.x, y, barrier.leftBlock.w, 22);
+                ctx.shadowBlur = 0;
+
+                // Right block
+                ctx.fillRect(barrier.rightBlock.x, y, barrier.rightBlock.w, 22);
+
+                // Color label in gap
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                ctx.fillText(colorName, barrier.gapCenter, y + 11);
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw ball
+            const p = state.ball;
+            const color = COLORS[p.colorIndex];
+
+            // Glow
+            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 1.8);
+            grad.addColorStop(0, color + '40');
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius * 1.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ball body
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Inner highlight
+            ctx.beginPath();
+            ctx.arc(p.x - p.radius * 0.3, p.y - p.radius * 0.3, p.radius * 0.35, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fill();
+
+            // Color emoji
+            ctx.font = `${p.radius * 0.9}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.fillText(COLOR_NAMES[p.colorIndex], p.x, p.y + 1);
+            ctx.shadowBlur = 0;
+
+            // Color name under ball
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fillText(COLOR_LABELS[p.colorIndex], p.x, p.y + p.radius + 6);
+
+            // Tap to switch color hint
+            if (state.isRunning && !state.isGameOver) {
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillText('Tap to switch color', W / 2, H - 14);
+            }
+
+            // Score on canvas
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.font = '50px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🌈', W / 2, H / 2 - 40);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME LOOP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function gameLoop(timestamp) {
+            const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
+            lastTime = timestamp;
+
+            update(dt);
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CONTROLS – ULTRA FLUID DRAG
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function getCanvasPos(clientX, clientY) {
+            const rect = wrap.getBoundingClientRect();
+            return {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+
+        function handleDragStart(clientX, clientY) {
+            const pos = getCanvasPos(clientX, clientY);
+            state.isDragging = true;
+            state.dragX = Math.max(state.ball.radius, Math.min(W - state.ball.radius, pos.x));
+            state.smoothX = state.dragX;
+            state.ball.x = state.dragX;
+            initAudio();
+
+            // Also check if tap is on the ball area to switch color
+            const dx = pos.x - state.ball.x;
+            const dy = pos.y - state.ball.y;
+            if (Math.sqrt(dx * dx + dy * dy) < state.ball.radius * 1.5) {
+                // Tap on ball → switch color
+                state.ball.colorIndex = (state.ball.colorIndex + 1) % COLORS.length;
+                playColorSwitch();
+                spawnParticles('✨', state.ball.x, state.ball.y, 5);
+            }
+        }
+
+        function handleDragMove(clientX, clientY) {
+            if (!state.isDragging) return;
+            const pos = getCanvasPos(clientX, clientY);
+            state.dragX = Math.max(state.ball.radius, Math.min(W - state.ball.radius, pos.x));
+        }
+
+        function handleDragEnd() {
+            state.isDragging = false;
+        }
+
+        // ── Mouse Events ──
+        canvas.addEventListener('mousedown', (e) => {
+            handleDragStart(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (e.buttons === 0) {
+                state.isDragging = false;
+                return;
+            }
+            handleDragMove(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('mouseup', handleDragEnd);
+        canvas.addEventListener('mouseleave', handleDragEnd);
+
+        // ── Touch Events ──
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleDragStart(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleDragMove(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleDragEnd();
+        }, { passive: false });
+
+        canvas.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
+            handleDragEnd();
+        }, { passive: false });
+
+        // ── Keyboard ──
+        document.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Space') {
+                e.preventDefault();
+                if (!state.isRunning && !state.isGameOver) {
+                    startGame();
+                } else if (state.isRunning) {
+                    state.ball.colorIndex = (state.ball.colorIndex + 1) % COLORS.length;
+                    playColorSwitch();
+                    spawnParticles('✨', state.ball.x, state.ball.y, 5);
+                }
+            }
+            if (e.key === 'ArrowLeft') {
+                state.dragX = Math.max(state.ball.radius, state.ball.x - 25);
+                e.preventDefault();
+            } else if (e.key === 'ArrowRight') {
+                state.dragX = Math.min(W - state.ball.radius, state.ball.x + 25);
+                e.preventDefault();
+            }
+        });
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  INIT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        resetGame();
+        state.ball.x = W / 2;
+        state.dragX = state.ball.x;
+        state.smoothX = state.ball.x;
+        highDisplay.textContent = state.highScore;
+
+        requestAnimationFrame(gameLoop);
+
+        window.addEventListener('resize', () => {
+            resize();
+            state.ball.x = Math.min(state.ball.x, W - state.ball.radius);
+            state.ball.x = Math.max(state.ball.radius, state.ball.x);
+            state.dragX = state.ball.x;
+            state.smoothX = state.ball.x;
+        });
+
+        console.log('🌈 Color Dash – Fluid Drag Edition!');
+        console.log('💡 Drag the ball left/right with fluid motion.');
+        console.log('👆 Tap the ball to switch colors.');
+        console.log('⌨️  Space to switch color, Arrow keys to move.');
+    </script>
+</body>
+</html>

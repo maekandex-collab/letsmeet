@@ -269,14 +269,29 @@ export default function HomePage() {
     <div className="mobile-shell flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
       <LogoHeader
         right={
-          <Link
-            href="/filter"
-            className="w-10 h-10 flex items-center justify-center rounded-2xl bg-primary-light/80 border border-primary/10 pressable shadow-soft"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="#F759F5" strokeWidth="2" strokeLinejoin="round" />
-            </svg>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/games"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-primary-light/80 border border-primary/10 pressable shadow-soft"
+              aria-label="Play games"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M6 12h4M8 10v4" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="15.5" cy="10.5" r="1" fill="#F759F5" />
+                <circle cx="17.5" cy="13.5" r="1" fill="#3E36ED" />
+                <rect x="2" y="7" width="20" height="10" rx="5" stroke="#F759F5" strokeWidth="2" />
+              </svg>
+            </Link>
+            <Link
+              href="/filter"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl bg-primary-light/80 border border-primary/10 pressable shadow-soft"
+              aria-label="Filters"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="#F759F5" strokeWidth="2" strokeLinejoin="round" />
+              </svg>
+            </Link>
+          </div>
         }
       />
 

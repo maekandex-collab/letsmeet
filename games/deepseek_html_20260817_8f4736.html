@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>💖 Heart Catcher – One Miss = Game Over</title>
+    <style>
+        /* ── Reset & Base ── */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            background: #0d080d;
+            background: radial-gradient(ellipse at center, #1a0e1a, #0a060a);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+        #game {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            height: 100vh;
+            max-height: 780px;
+            background: linear-gradient(180deg, #1a0e1a, #0d080d);
+            border-radius: 32px;
+            overflow: hidden;
+            box-shadow: 0 20px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 120, 200, 0.06);
+            margin: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        @media (max-width:440px) {
+            #game {
+                max-height: 100vh;
+                border-radius: 0;
+                margin: 0;
+                max-width: 100%;
+            }
+        }
+
+        #top-bar {
+            padding: 14px 20px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            z-index: 10;
+            background: transparent;
+            pointer-events: none;
+        }
+        #top-bar>* {
+            pointer-events: auto;
+        }
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ff6b9d, #ff2d78);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stats {
+            display: flex;
+            gap: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .stats span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stats .num {
+            color: #fff;
+            min-width: 20px;
+            text-align: center;
+        }
+        .stats .num.score-num {
+            color: #f5c542;
+        }
+        .stats .num.combo-num {
+            color: #4dc9f6;
+            font-weight: 800;
+        }
+
+        #canvas-wrap {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            margin: 0 8px 8px;
+            border-radius: 24px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: pointer;
+        }
+
+        /* Overlay screens */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            flex-direction: column;
+            border-radius: 24px;
+            animation: fadeIn 0.4s ease;
+        }
+        .overlay.active {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .overlay-box {
+            text-align: center;
+            padding: 28px 24px 32px;
+            max-width: 300px;
+            width: 85%;
+            background: rgba(20, 10, 20, 0.85);
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 16px 60px rgba(0, 0, 0, 0.5);
+        }
+        .overlay-box .emoji-big {
+            font-size: 64px;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .overlay-box h2 {
+            font-size: 30px;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 2px;
+        }
+        .overlay-box .sub {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 15px;
+            margin-bottom: 16px;
+        }
+        .overlay-box .btn-main {
+            padding: 14px 44px;
+            border: none;
+            border-radius: 30px;
+            font-size: 17px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ff6b9d, #ff2d78);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 6px 30px rgba(255, 45, 120, 0.2);
+            touch-action: manipulation;
+        }
+        .overlay-box .btn-main:active {
+            transform: scale(0.92);
+        }
+        .overlay-box .final-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 12px 0 20px;
+        }
+        .overlay-box .final-stat {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 8px 4px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .overlay-box .final-stat .val {
+            font-size: 26px;
+            font-weight: 800;
+            color: #fff;
+            display: block;
+        }
+        .overlay-box .final-stat .label {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .overlay-box .final-stat .val.high-score {
+            color: #f5c542;
+        }
+        .overlay-box .final-stat .val.combo {
+            color: #4dc9f6;
+        }
+
+        #particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 20;
+            overflow: hidden;
+            border-radius: 24px;
+        }
+        .particle {
+            position: absolute;
+            font-size: 20px;
+            animation: floatUp 1.2s ease-out forwards;
+            opacity: 0;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(0, 0) scale(0.6) rotate(0deg); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.4) rotate(360deg); }
+        }
+
+        /* Mobile adjustments */
+        @media(max-height:700px) {
+            .logo { font-size: 16px; }
+            .stats { font-size: 13px; gap: 12px; }
+            .overlay-box h2 { font-size: 24px; }
+            .overlay-box .emoji-big { font-size: 48px; }
+            .overlay-box .btn-main { padding: 12px 32px; font-size: 15px; }
+        }
+        @media(max-height:600px) {
+            #top-bar { padding: 8px 16px 4px; }
+            .logo { font-size: 14px; }
+            .stats { font-size: 12px; gap: 10px; }
+            .overlay-box { padding: 20px 16px 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <!-- Top bar -->
+        <div id="top-bar">
+            <div class="logo">💖 Heart Catcher</div>
+            <div class="stats">
+                <span>⭐ <span class="num score-num" id="scoreDisplay">0</span></span>
+                <span>🔥 <span class="num combo-num" id="comboDisplay">0</span></span>
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div id="canvas-wrap">
+            <canvas id="gameCanvas"></canvas>
+            <div id="particles"></div>
+
+            <!-- Start overlay -->
+            <div class="overlay active" id="startOverlay">
+                <div class="overlay-box">
+                    <span class="emoji-big">💘</span>
+                    <h2>Heart Catcher</h2>
+                    <p class="sub">Catch all hearts!<br/>Miss one and it's <strong>GAME OVER</strong>.<br/>💣 Bombs also end your run.</p>
+                    <button class="btn-main" id="startBtn" onclick="startGame()">▶ Play</button>
+                </div>
+            </div>
+
+            <!-- Game Over overlay -->
+            <div class="overlay" id="gameoverOverlay">
+                <div class="overlay-box">
+                    <span class="emoji-big" id="goEmoji">💔</span>
+                    <h2 id="goTitle">Game Over</h2>
+                    <p class="sub" id="goSub">You missed a heart!</p>
+                    <div class="final-stats">
+                        <div class="final-stat">
+                            <span class="val" id="finalScore">0</span>
+                            <span class="label">Score</span>
+                        </div>
+                        <div class="final-stat">
+                            <span class="val high-score" id="finalHigh">0</span>
+                            <span class="label">Best</span>
+                        </div>
+                        <div class="final-stat">
+                            <span class="val combo" id="finalCombo">0</span>
+                            <span class="label">Max Combo</span>
+                        </div>
+                        <div class="final-stat">
+                            <span class="val" id="finalCaught">0</span>
+                            <span class="label">Hearts Caught</span>
+                        </div>
+                    </div>
+                    <button class="btn-main" id="restartBtn" onclick="startGame()">🔄 Try Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CANVAS SETUP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrap = document.getElementById('canvas-wrap');
+
+        let W, H;
+
+        function resize() {
+            const rect = wrap.getBoundingClientRect();
+            W = rect.width;
+            H = rect.height;
+            canvas.width = W;
+            canvas.height = H;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  AUDIO (Web Audio)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+                } catch (_) {}
+            }
+        }
+
+        function playTone(freq, duration, type = 'sine', vol = 0.12) {
+            try {
+                if (!audioCtx) initAudio();
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (_) {}
+        }
+
+        function playCatch() {
+            playTone(660, 0.10, 'sine', 0.10);
+            setTimeout(() => playTone(880, 0.12, 'sine', 0.08), 80);
+        }
+
+        function playBomb() {
+            playTone(300, 0.25, 'sawtooth', 0.06);
+            setTimeout(() => playTone(200, 0.30, 'sawtooth', 0.06), 120);
+        }
+
+        function playGameOver() {
+            playTone(500, 0.20, 'sine', 0.08);
+            setTimeout(() => playTone(400, 0.20, 'sine', 0.08), 200);
+            setTimeout(() => playTone(300, 0.40, 'sine', 0.08), 400);
+        }
+
+        function playCombo(combo) {
+            if (combo > 5) {
+                playTone(880, 0.06, 'sine', 0.06);
+                setTimeout(() => playTone(1100, 0.06, 'sine', 0.06), 50);
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME STATE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const state = {
+            score: 0,
+            highScore: parseInt(localStorage.getItem('heartCatcherOneMissHigh')) || 0,
+            combo: 0,
+            maxCombo: 0,
+            heartsCaught: 0,
+            isRunning: false,
+            isGameOver: false,
+
+            // Player
+            player: { x: 0, y: 0, radius: 28 },
+
+            // Falling items
+            items: [],
+            spawnTimer: 0,
+            spawnInterval: 1.2, // seconds
+            speedBase: 140, // pixels per second
+            speedMultiplier: 1,
+
+            // controls
+            targetX: 0,
+        };
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  DOM REFS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const comboDisplay = document.getElementById('comboDisplay');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameoverOverlay = document.getElementById('gameoverOverlay');
+        const finalScore = document.getElementById('finalScore');
+        const finalHigh = document.getElementById('finalHigh');
+        const finalCombo = document.getElementById('finalCombo');
+        const finalCaught = document.getElementById('finalCaught');
+        const goEmoji = document.getElementById('goEmoji');
+        const goTitle = document.getElementById('goTitle');
+        const goSub = document.getElementById('goSub');
+        const particleContainer = document.getElementById('particles');
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  PARTICLES
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function spawnParticles(emoji, x, y, count = 12) {
+            const rect = wrap.getBoundingClientRect();
+            const cx = x;
+            const cy = y;
+            for (let i = 0; i < count; i++) {
+                const el = document.createElement('div');
+                el.className = 'particle';
+                el.textContent = emoji;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 40 + Math.random() * 80;
+                const tx = Math.cos(angle) * dist;
+                const ty = Math.sin(angle) * dist - 40;
+                el.style.setProperty('--tx', tx + 'px');
+                el.style.setProperty('--ty', ty + 'px');
+                el.style.left = (cx + (Math.random() - 0.5) * 20) + 'px';
+                el.style.top = (cy + (Math.random() - 0.5) * 20) + 'px';
+                el.style.fontSize = (16 + Math.random() * 24) + 'px';
+                el.style.animationDuration = (0.8 + Math.random() * 0.6) + 's';
+                el.style.animationDelay = (Math.random() * 0.2) + 's';
+                particleContainer.appendChild(el);
+                setTimeout(() => el.remove(), 1500);
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME LOGIC
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function resetGame() {
+            state.score = 0;
+            state.combo = 0;
+            state.maxCombo = 0;
+            state.heartsCaught = 0;
+            state.isRunning = false;
+            state.isGameOver = false;
+            state.items = [];
+            state.spawnTimer = 0;
+            state.speedMultiplier = 1;
+            state.player.x = W / 2;
+            state.player.y = H - 70;
+            state.targetX = state.player.x;
+            updateUI();
+        }
+
+        window.startGame = function() {
+            resetGame();
+            state.isRunning = true;
+            startOverlay.classList.remove('active');
+            gameoverOverlay.classList.remove('active');
+            updateUI();
+            initAudio();
+        };
+
+        function gameOver(reason = 'You missed a heart!') {
+            state.isRunning = false;
+            state.isGameOver = true;
+            playGameOver();
+
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('heartCatcherOneMissHigh', String(state.highScore));
+            }
+
+            finalScore.textContent = state.score;
+            finalHigh.textContent = state.highScore;
+            finalCombo.textContent = state.maxCombo;
+            finalCaught.textContent = state.heartsCaught;
+
+            if (state.score >= 50) {
+                goEmoji.textContent = '🏆';
+                goTitle.textContent = 'Heart Legend!';
+                goSub.textContent = 'Perfect run!';
+            } else if (state.score >= 25) {
+                goEmoji.textContent = '💕';
+                goTitle.textContent = 'Great Catch!';
+                goSub.textContent = 'You almost had it all!';
+            } else if (state.score >= 10) {
+                goEmoji.textContent = '😊';
+                goTitle.textContent = 'Not Bad!';
+                goSub.textContent = 'Keep practicing!';
+            } else {
+                goEmoji.textContent = '💔';
+                goTitle.textContent = 'Game Over';
+                goSub.textContent = reason;
+            }
+
+            gameoverOverlay.classList.add('active');
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = state.score;
+            comboDisplay.textContent = state.combo;
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  SPAWN ITEMS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function spawnItem() {
+            const isHeart = Math.random() < 0.7; // 70% hearts
+            const x = 20 + Math.random() * (W - 40);
+            const speed = state.speedBase * state.speedMultiplier * (0.85 + Math.random() * 0.4);
+            const radius = isHeart ? 18 : 22;
+            const emoji = isHeart ? ['❤️', '💖', '💗', '💘', '💕'][Math.floor(Math.random() * 5)] : '💣';
+            state.items.push({
+                x: x,
+                y: -radius,
+                radius: radius,
+                speed: speed,
+                isHeart: isHeart,
+                emoji: emoji,
+                rot: 0,
+            });
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  UPDATE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let lastTime = 0;
+
+        function update(dt) {
+            if (!state.isRunning || state.isGameOver) return;
+
+            // Increase difficulty over time
+            state.speedMultiplier = 1 + (state.score / 60) * 1.8; // up to ~4 at score 100
+
+            // Spawn
+            state.spawnTimer += dt;
+            const interval = Math.max(0.35, state.spawnInterval - (state.score / 150) * 0.5);
+            if (state.spawnTimer >= interval) {
+                state.spawnTimer = 0;
+                spawnItem();
+                if (Math.random() < 0.25 && state.score > 15) spawnItem(); // extra item sometimes
+            }
+
+            // Move player towards targetX
+            const p = state.player;
+            const diff = state.targetX - p.x;
+            p.x += diff * Math.min(1, 12 * dt);
+            p.x = Math.max(p.radius, Math.min(W - p.radius, p.x));
+
+            // Update items
+            for (let i = state.items.length - 1; i >= 0; i--) {
+                const item = state.items[i];
+                item.y += item.speed * dt;
+                item.rot += dt * 2;
+
+                // Check if passed bottom
+                if (item.y - item.radius > H) {
+                    if (item.isHeart) {
+                        // MISSED A HEART → GAME OVER
+                        playBomb();
+                        spawnParticles('💔', item.x, H - 20, 12);
+                        gameOver('You missed a heart! 💔');
+                        return;
+                    } else {
+                        // Bomb passed safely? Actually we should remove it.
+                        state.items.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                // Collision with player
+                const dx = item.x - p.x;
+                const dy = item.y - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < item.radius + p.radius) {
+                    if (item.isHeart) {
+                        // Catch heart
+                        state.score += 1 + Math.floor(state.combo / 3); // combo bonus
+                        state.combo++;
+                        if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+                        state.heartsCaught++;
+                        updateUI();
+                        playCatch();
+                        playCombo(state.combo);
+                        spawnParticles('💖', item.x, item.y, 10);
+                        state.items.splice(i, 1);
+                    } else {
+                        // Hit bomb → Game Over
+                        playBomb();
+                        spawnParticles('💥', item.x, item.y, 16);
+                        gameOver('You caught a bomb! 💥');
+                        return;
+                    }
+                }
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  RENDER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function render() {
+            ctx.clearRect(0, 0, W, H);
+
+            // Background glow
+            const grad = ctx.createRadialGradient(W / 2, H * 0.7, 0, W / 2, H * 0.7, H * 0.8);
+            grad.addColorStop(0, 'rgba(255,45,120,0.04)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+
+            // Ground line
+            ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(20, H - 20);
+            ctx.lineTo(W - 20, H - 20);
+            ctx.stroke();
+
+            // Draw items
+            for (const item of state.items) {
+                ctx.save();
+                ctx.translate(item.x, item.y);
+                ctx.rotate(item.rot);
+                ctx.font = `${item.radius * 1.8}px serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = item.isHeart ? 'rgba(255,45,120,0.4)' : 'rgba(255,0,0,0.4)';
+                ctx.shadowBlur = 15;
+                ctx.fillText(item.emoji, 0, 0);
+                ctx.restore();
+            }
+
+            // Draw player (basket)
+            const p = state.player;
+            ctx.save();
+            ctx.shadowColor = 'rgba(255,45,120,0.2)';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y, p.radius * 1.1, p.radius * 0.7, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,45,120,0.08)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,45,120,0.3)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.font = `${p.radius * 1.2}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255,45,120,0.8)';
+            ctx.shadowBlur = 16;
+            ctx.shadowColor = 'rgba(255,45,120,0.3)';
+            ctx.fillText('❤️', p.x, p.y - 2);
+            ctx.restore();
+
+            // Combo indicator on canvas
+            if (state.combo > 2) {
+                ctx.fillStyle = 'rgba(255,215,0,0.8)';
+                ctx.font = 'bold 18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = 'rgba(255,215,0,0.3)';
+                ctx.fillText(`🔥 ${state.combo}x`, p.x, p.y - 50);
+                ctx.shadowBlur = 0;
+            }
+
+            // Score on canvas (large faint)
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.font = '60px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❤️', W / 2, H / 2 - 40);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME LOOP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function gameLoop(timestamp) {
+            const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
+            lastTime = timestamp;
+
+            update(dt);
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CONTROLS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function handleMove(clientX) {
+            const rect = wrap.getBoundingClientRect();
+            const x = (clientX - rect.left) * (canvas.width / rect.width);
+            state.targetX = Math.max(state.player.radius, Math.min(W - state.player.radius, x));
+        }
+
+        // Mouse
+        canvas.addEventListener('mousemove', (e) => {
+            if (e.buttons === 0) return;
+            handleMove(e.clientX);
+        });
+        canvas.addEventListener('mousedown', (e) => {
+            handleMove(e.clientX);
+            initAudio();
+        });
+
+        // Touch
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleMove(touch.clientX);
+            initAudio();
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleMove(touch.clientX);
+        }, { passive: false });
+
+        // Keyboard
+        document.addEventListener('keydown', (e) => {
+            const p = state.player;
+            const step = 15;
+            if (e.key === 'ArrowLeft') {
+                state.targetX = Math.max(p.radius, p.x - step);
+                e.preventDefault();
+            } else if (e.key === 'ArrowRight') {
+                state.targetX = Math.min(W - p.radius, p.x + step);
+                e.preventDefault();
+            }
+            if (e.key === ' ' || e.key === 'Enter') {
+                if (!state.isRunning && !state.isGameOver) {
+                    startGame();
+                }
+                e.preventDefault();
+            }
+        });
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  INIT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        resetGame();
+        state.player.x = W / 2;
+        state.targetX = state.player.x;
+        finalHigh.textContent = state.highScore;
+
+        requestAnimationFrame(gameLoop);
+
+        window.addEventListener('resize', () => {
+            resize();
+            state.player.x = Math.min(state.player.x, W - state.player.radius);
+            state.player.x = Math.max(state.player.radius, state.player.x);
+            state.targetX = state.player.x;
+        });
+
+        console.log('💖 Heart Catcher – One Miss = Game Over!');
+        console.log('⌨️  Arrow keys to move, Space to start.');
+        console.log('🔥 Build combo with consecutive catches for bonus points!');
+    </script>
+</body>
+</html>

@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>⚡ Stack Tower – 5s Challenge</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            background: #0a0a12;
+            background: radial-gradient(ellipse at center, #1a1a2e, #0a0a12);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+        #game {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            height: 100vh;
+            max-height: 780px;
+            background: linear-gradient(180deg, #0f0f1a, #06060c);
+            border-radius: 32px;
+            overflow: hidden;
+            box-shadow: 0 20px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 200, 50, 0.06);
+            margin: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        @media (max-width:440px) {
+            #game {
+                max-height: 100vh;
+                border-radius: 0;
+                margin: 0;
+                max-width: 100%;
+            }
+        }
+
+        #top-bar {
+            padding: 14px 20px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            z-index: 10;
+            background: transparent;
+            pointer-events: none;
+        }
+        #top-bar>* {
+            pointer-events: auto;
+        }
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #f5c542, #ff6b9d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stats {
+            display: flex;
+            gap: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .stats span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stats .num {
+            color: #fff;
+            min-width: 20px;
+            text-align: center;
+        }
+        .stats .num.timer-num {
+            color: #4dc9f6;
+            font-weight: 800;
+            font-size: 18px;
+        }
+
+        #canvas-wrap {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            margin: 0 8px 8px;
+            border-radius: 24px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: pointer;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            flex-direction: column;
+            border-radius: 24px;
+            animation: fadeIn 0.4s ease;
+        }
+        .overlay.active {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .overlay-box {
+            text-align: center;
+            padding: 28px 24px 32px;
+            max-width: 300px;
+            width: 85%;
+            background: rgba(20, 20, 40, 0.85);
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 16px 60px rgba(0, 0, 0, 0.5);
+        }
+        .overlay-box .emoji-big {
+            font-size: 64px;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .overlay-box h2 {
+            font-size: 30px;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 2px;
+        }
+        .overlay-box .sub {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 15px;
+            margin-bottom: 16px;
+        }
+        .overlay-box .btn-main {
+            padding: 14px 44px;
+            border: none;
+            border-radius: 30px;
+            font-size: 17px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f5c542, #ff6b9d);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 6px 30px rgba(255, 107, 157, 0.2);
+            touch-action: manipulation;
+        }
+        .overlay-box .btn-main:active {
+            transform: scale(0.92);
+        }
+        .overlay-box .final-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 12px 0 20px;
+        }
+        .overlay-box .final-stat {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 8px 4px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .overlay-box .final-stat .val {
+            font-size: 26px;
+            font-weight: 800;
+            color: #fff;
+            display: block;
+        }
+        .overlay-box .final-stat .label {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .overlay-box .final-stat .val.high-score {
+            color: #f5c542;
+        }
+
+        #particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 20;
+            overflow: hidden;
+            border-radius: 24px;
+        }
+        .particle {
+            position: absolute;
+            font-size: 20px;
+            animation: floatUp 1.2s ease-out forwards;
+            opacity: 0;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(0, 0) scale(0.5) rotate(0deg); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.4) rotate(360deg); }
+        }
+
+        .timer-warning {
+            color: #ff4757 !important;
+            animation: pulse 0.5s ease infinite alternate;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+
+        @media(max-height:700px) {
+            .logo { font-size: 16px; }
+            .stats { font-size: 13px; gap: 12px; }
+            .overlay-box h2 { font-size: 24px; }
+            .overlay-box .emoji-big { font-size: 48px; }
+            .overlay-box .btn-main { padding: 12px 32px; font-size: 15px; }
+        }
+        @media(max-height:600px) {
+            #top-bar { padding: 8px 16px 4px; }
+            .logo { font-size: 14px; }
+            .stats { font-size: 12px; gap: 10px; }
+            .overlay-box { padding: 20px 16px 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <!-- Top bar -->
+        <div id="top-bar">
+            <div class="logo">⚡ Stack Tower</div>
+            <div class="stats">
+                <span>⏱️ <span class="num timer-num" id="timerDisplay">5s</span></span>
+                <span>🏆 <span class="num" id="scoreDisplay">0</span></span>
+            </div>
+        </div>
+
+        <!-- Canvas Wrap -->
+        <div id="canvas-wrap">
+            <canvas id="gameCanvas"></canvas>
+            <div id="particles"></div>
+
+            <!-- Start overlay -->
+            <div class="overlay active" id="startOverlay">
+                <div class="overlay-box">
+                    <span class="emoji-big">⚡</span>
+                    <h2>Stack Tower</h2>
+                    <p class="sub">Tap to drop the block before time runs out!<br/>You have only 5 seconds per block.</p>
+                    <button class="btn-main" id="startBtn" onclick="startGame()">▶ Play</button>
+                </div>
+            </div>
+
+            <!-- Game Over overlay -->
+            <div class="overlay" id="gameoverOverlay">
+                <div class="overlay-box">
+                    <span class="emoji-big" id="goEmoji">💔</span>
+                    <h2 id="goTitle">Game Over</h2>
+                    <p class="sub" id="goSub">Time's up!</p>
+                    <div class="final-stats">
+                        <div class="final-stat">
+                            <span class="val" id="finalScore">0</span>
+                            <span class="label">Score</span>
+                        </div>
+                        <div class="final-stat">
+                            <span class="val high-score" id="finalHigh">0</span>
+                            <span class="label">Best</span>
+                        </div>
+                    </div>
+                    <button class="btn-main" id="restartBtn" onclick="startGame()">🔄 Try Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CANVAS SETUP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrap = document.getElementById('canvas-wrap');
+
+        let W, H;
+
+        function resize() {
+            const rect = wrap.getBoundingClientRect();
+            W = rect.width;
+            H = rect.height;
+            canvas.width = W;
+            canvas.height = H;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  AUDIO (Web Audio)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+                } catch (_) {}
+            }
+        }
+
+        function playTone(freq, duration, type = 'sine', vol = 0.10) {
+            try {
+                if (!audioCtx) initAudio();
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (_) {}
+        }
+
+        function playDrop() {
+            playTone(350, 0.08, 'sine', 0.07);
+        }
+        function playPerfect() {
+            playTone(523, 0.08, 'sine', 0.08);
+            setTimeout(() => playTone(659, 0.08, 'sine', 0.08), 80);
+        }
+        function playCollapse() {
+            playTone(300, 0.25, 'sawtooth', 0.05);
+            setTimeout(() => playTone(200, 0.30, 'sawtooth', 0.05), 150);
+        }
+        function playHighScore() {
+            playTone(523, 0.10, 'sine', 0.08);
+            setTimeout(() => playTone(659, 0.10, 'sine', 0.08), 100);
+            setTimeout(() => playTone(784, 0.10, 'sine', 0.08), 200);
+            setTimeout(() => playTone(1047, 0.20, 'sine', 0.10), 300);
+        }
+        function playTick() {
+            playTone(1000, 0.04, 'sine', 0.04);
+        }
+        function playTimeout() {
+            playTone(440, 0.15, 'sine', 0.08);
+            setTimeout(() => playTone(330, 0.20, 'sine', 0.08), 150);
+            setTimeout(() => playTone(220, 0.30, 'sine', 0.08), 300);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME STATE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const state = {
+            score: 0,
+            highScore: parseInt(localStorage.getItem('stackTower5sHigh')) || 0,
+            isRunning: false,
+            isGameOver: false,
+
+            tower: [],
+            blockHeight: 30,
+
+            moving: {
+                x: 0,
+                y: 0,
+                w: 0,
+                h: 30,
+                speed: 0,
+                direction: 1,
+                color: '#4dc9f6',
+            },
+
+            // Timer per block
+            timeLeft: 5, // seconds
+            timerInterval: null,
+
+            baseX: 0,
+            baseWidth: 0,
+            speedBase: 280, // faster than before
+            speedMultiplier: 1,
+            blockIndex: 0,
+        };
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  DOM REFS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        const timerDisplay = document.getElementById('timerDisplay');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameoverOverlay = document.getElementById('gameoverOverlay');
+        const finalScore = document.getElementById('finalScore');
+        const finalHigh = document.getElementById('finalHigh');
+        const goEmoji = document.getElementById('goEmoji');
+        const goTitle = document.getElementById('goTitle');
+        const goSub = document.getElementById('goSub');
+        const particleContainer = document.getElementById('particles');
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  PARTICLES
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function spawnParticles(emoji, x, y, count = 12) {
+            const rect = wrap.getBoundingClientRect();
+            const cx = x;
+            const cy = y;
+            for (let i = 0; i < count; i++) {
+                const el = document.createElement('div');
+                el.className = 'particle';
+                el.textContent = emoji;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 30 + Math.random() * 60;
+                const tx = Math.cos(angle) * dist;
+                const ty = Math.sin(angle) * dist - 30;
+                el.style.setProperty('--tx', tx + 'px');
+                el.style.setProperty('--ty', ty + 'px');
+                el.style.left = (cx + (Math.random() - 0.5) * 20) + 'px';
+                el.style.top = (cy + (Math.random() - 0.5) * 20) + 'px';
+                el.style.fontSize = (14 + Math.random() * 22) + 'px';
+                el.style.animationDuration = (0.8 + Math.random() * 0.6) + 's';
+                el.style.animationDelay = (Math.random() * 0.2) + 's';
+                particleContainer.appendChild(el);
+                setTimeout(() => el.remove(), 1500);
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME LOGIC
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function resetGame() {
+            state.score = 0;
+            state.isRunning = false;
+            state.isGameOver = false;
+            state.tower = [];
+            state.blockIndex = 0;
+            state.speedMultiplier = 1;
+            state.timeLeft = 5;
+            if (state.timerInterval) {
+                clearInterval(state.timerInterval);
+                state.timerInterval = null;
+            }
+
+            const baseW = Math.min(W * 0.6, 180);
+            state.baseWidth = baseW;
+            state.baseX = (W - baseW) / 2;
+
+            state.tower.push({
+                x: state.baseX,
+                y: H - 40,
+                w: baseW,
+                h: state.blockHeight,
+                color: '#6c5ce7',
+            });
+
+            state.moving.w = baseW;
+            state.moving.h = state.blockHeight;
+            state.moving.x = state.baseX;
+            state.moving.y = state.tower[0].y - state.blockHeight;
+            state.moving.speed = state.speedBase;
+            state.moving.direction = 1;
+            state.moving.color = '#4dc9f6';
+
+            updateUI();
+            renderTimer();
+        }
+
+        window.startGame = function() {
+            resetGame();
+            state.isRunning = true;
+            startOverlay.classList.remove('active');
+            gameoverOverlay.classList.remove('active');
+            updateUI();
+            initAudio();
+            // Start timer
+            state.timeLeft = 5;
+            startBlockTimer();
+        };
+
+        function startBlockTimer() {
+            if (state.timerInterval) {
+                clearInterval(state.timerInterval);
+                state.timerInterval = null;
+            }
+            state.timeLeft = 5;
+            renderTimer();
+            state.timerInterval = setInterval(() => {
+                state.timeLeft -= 0.1;
+                if (state.timeLeft < 0) state.timeLeft = 0;
+                renderTimer();
+                if (state.timeLeft <= 0) {
+                    clearInterval(state.timerInterval);
+                    state.timerInterval = null;
+                    if (!state.isGameOver && state.isRunning) {
+                        // Time's up for this block!
+                        timeoutBlock();
+                    }
+                }
+            }, 100);
+        }
+
+        function renderTimer() {
+            const seconds = Math.ceil(state.timeLeft);
+            timerDisplay.textContent = seconds + 's';
+            if (seconds <= 2) {
+                timerDisplay.classList.add('timer-warning');
+                if (state.timeLeft > 0 && state.timeLeft <= 2 && state.isRunning) {
+                    playTick();
+                }
+            } else {
+                timerDisplay.classList.remove('timer-warning');
+            }
+        }
+
+        function timeoutBlock() {
+            // Game over because user didn't tap in time
+            playTimeout();
+            spawnParticles('⏰', W/2, H/2, 20);
+            gameOver('Time\'s up!');
+        }
+
+        function dropBlock() {
+            if (!state.isRunning || state.isGameOver) return;
+            // Stop the timer
+            if (state.timerInterval) {
+                clearInterval(state.timerInterval);
+                state.timerInterval = null;
+            }
+
+            const moving = state.moving;
+            const topBlock = state.tower[state.tower.length - 1];
+            const prevX = topBlock.x;
+            const prevW = topBlock.w;
+
+            const left = Math.max(moving.x, prevX);
+            const right = Math.min(moving.x + moving.w, prevX + prevW);
+            const overlap = right - left;
+
+            if (overlap <= 0) {
+                playCollapse();
+                spawnParticles('💥', moving.x + moving.w/2, moving.y + moving.h/2, 20);
+                gameOver('Missed the stack!');
+                return;
+            }
+
+            const isPerfect = Math.abs(moving.x - prevX) < 2;
+            let newX, newW;
+            if (isPerfect) {
+                newX = prevX;
+                newW = prevW;
+                playPerfect();
+                spawnParticles('⭐', moving.x + moving.w/2, moving.y + moving.h/2, 12);
+                state.score += 2;
+            } else {
+                if (moving.x < prevX) {
+                    newX = prevX;
+                    newW = moving.x + moving.w - prevX;
+                } else {
+                    newX = moving.x;
+                    newW = prevX + prevW - moving.x;
+                }
+                if (newW < 10) {
+                    playCollapse();
+                    spawnParticles('💥', moving.x + moving.w/2, moving.y + moving.h/2, 20);
+                    gameOver('Block too small!');
+                    return;
+                }
+                state.score += 1;
+                playDrop();
+            }
+
+            const newBlock = {
+                x: newX,
+                y: moving.y,
+                w: newW,
+                h: state.blockHeight,
+                color: isPerfect ? '#f5c542' : '#4dc9f6',
+            };
+            state.tower.push(newBlock);
+
+            state.blockIndex++;
+            state.speedMultiplier = 1 + state.blockIndex * 0.04;
+
+            state.moving.w = newW;
+            state.moving.h = state.blockHeight;
+            state.moving.x = newX;
+            state.moving.y = newBlock.y - state.blockHeight;
+            state.moving.speed = state.speedBase * state.speedMultiplier;
+            state.moving.direction = Math.random() < 0.5 ? 1 : -1;
+            const colors = ['#4dc9f6', '#ff6b9d', '#f5c542', '#2ed573', '#a55eea'];
+            state.moving.color = colors[Math.floor(Math.random() * colors.length)];
+
+            updateUI();
+            // Start timer for next block
+            state.timeLeft = 5;
+            startBlockTimer();
+        }
+
+        function gameOver(reason) {
+            state.isRunning = false;
+            state.isGameOver = true;
+            if (state.timerInterval) {
+                clearInterval(state.timerInterval);
+                state.timerInterval = null;
+            }
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('stackTower5sHigh', String(state.highScore));
+                playHighScore();
+            }
+            finalScore.textContent = state.score;
+            finalHigh.textContent = state.highScore;
+            goSub.textContent = reason;
+            if (state.score >= 20) {
+                goEmoji.textContent = '🏆';
+                goTitle.textContent = 'Master Builder!';
+            } else if (state.score >= 10) {
+                goEmoji.textContent = '🌟';
+                goTitle.textContent = 'Great Tower!';
+            } else if (state.score >= 5) {
+                goEmoji.textContent = '😊';
+                goTitle.textContent = 'Not Bad!';
+            } else {
+                goEmoji.textContent = '💔';
+                goTitle.textContent = 'Game Over';
+            }
+            gameoverOverlay.classList.add('active');
+            timerDisplay.classList.remove('timer-warning');
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = state.score;
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  UPDATE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let lastTime = 0;
+
+        function update(dt) {
+            if (!state.isRunning || state.isGameOver) return;
+
+            const m = state.moving;
+            m.x += m.speed * m.direction * dt;
+            const padding = 10;
+            if (m.x < padding) {
+                m.x = padding;
+                m.direction = 1;
+            } else if (m.x + m.w > W - padding) {
+                m.x = W - padding - m.w;
+                m.direction = -1;
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  RENDER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function render() {
+            ctx.clearRect(0, 0, W, H);
+
+            // Draw tower blocks
+            for (const block of state.tower) {
+                ctx.fillStyle = block.color;
+                ctx.shadowColor = block.color;
+                ctx.shadowBlur = 8;
+                ctx.fillRect(block.x, block.y, block.w, block.h);
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(block.x, block.y, block.w, block.h);
+            }
+
+            // Draw moving block
+            const m = state.moving;
+            ctx.fillStyle = m.color;
+            ctx.shadowColor = m.color;
+            ctx.shadowBlur = 12;
+            ctx.fillRect(m.x, m.y, m.w, m.h);
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(m.x, m.y, m.w, m.h);
+
+            // Direction arrow
+            const arrowX = m.x + (m.direction > 0 ? m.w + 12 : -12);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.font = '18px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(m.direction > 0 ? '▶' : '◀', arrowX, m.y + m.h/2);
+
+            // Ghost target
+            if (state.tower.length > 0) {
+                const top = state.tower[state.tower.length - 1];
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 6]);
+                ctx.strokeRect(top.x, m.y, top.w, m.h);
+                ctx.setLineDash([]);
+            }
+
+            // Draw timer ring around moving block (or on canvas)
+            const progress = state.timeLeft / 5;
+            const radius = Math.min(m.w, m.h) * 0.7;
+            const cx = m.x + m.w/2;
+            const cy = m.y + m.h/2 + 30;
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = progress > 0.4 ? '#4dc9f6' : '#ff4757';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * progress);
+            ctx.stroke();
+
+            // Time remaining text
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = 'bold 16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(Math.ceil(state.timeLeft) + 's', cx, cy);
+
+            // Score on canvas
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            ctx.font = '40px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🏗️', W/2, H/2 - 40);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  GAME LOOP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function gameLoop(timestamp) {
+            const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
+            lastTime = timestamp;
+            update(dt);
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CONTROLS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        function handleTap() {
+            if (!state.isRunning && !state.isGameOver) {
+                startGame();
+                return;
+            }
+            if (state.isGameOver) return;
+            dropBlock();
+            initAudio();
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            handleTap();
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleTap();
+        }, { passive: false });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Space') {
+                e.preventDefault();
+                handleTap();
+            }
+        });
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  INIT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        resetGame();
+        requestAnimationFrame(gameLoop);
+
+        window.addEventListener('resize', () => {
+            resize();
+            if (!state.isRunning) {
+                resetGame();
+            } else {
+                // For simplicity, restart if resizing during game to avoid misalignment
+                if (state.isRunning) {
+                    // We'll just reset to avoid issues
+                    state.isRunning = false;
+                    resetGame();
+                    startGame();
+                }
+            }
+        });
+
+        console.log('⚡ Stack Tower 5s Challenge loaded! Tap to drop the block before time runs out.');
+        console.log('💡 Perfect alignments give bonus points.');
+    </script>
+</body>
+</html>

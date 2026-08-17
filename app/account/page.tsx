@@ -31,6 +31,18 @@ import { getDraft } from "@/lib/profileDraft";
 
 const SETTINGS = [
   {
+    label: "Play Games",
+    href: "/games",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M6 12h4M8 10v4" stroke="#3E36ED" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="15.5" cy="10.5" r="1" fill="#F759F5" />
+        <circle cx="17.5" cy="13.5" r="1" fill="#3E36ED" />
+        <rect x="2" y="7" width="20" height="10" rx="5" stroke="#3E36ED" strokeWidth="2" />
+      </svg>
+    ),
+  },
+  {
     label: "Security",
     href: "/settings/security",
     icon: (

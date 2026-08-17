@@ -9,6 +9,7 @@ interface ChatComposerProps {
   onFocus?: () => void;
   /** When the keyboard is open, drop home-indicator padding so the bar sits flush. */
   keyboardOpen?: boolean;
+  onOpenGames?: () => void;
 }
 
 export default function ChatComposer({
@@ -19,6 +20,7 @@ export default function ChatComposer({
   error,
   onFocus,
   keyboardOpen = false,
+  onOpenGames,
 }: ChatComposerProps) {
   const canSend = value.trim().length > 0 && !sending;
 
@@ -33,6 +35,21 @@ export default function ChatComposer({
             : "calc(0.625rem + env(safe-area-inset-bottom, 0px))",
         }}
       >
+        {onOpenGames && (
+          <button
+            type="button"
+            onClick={onOpenGames}
+            className="w-11 h-11 rounded-full bg-primary-light/80 border border-primary/15 flex items-center justify-center flex-shrink-0 pressable"
+            aria-label="Challenge to a game"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M6 12h4M8 10v4" stroke="#F759F5" strokeWidth="2" strokeLinecap="round" />
+              <circle cx="15.5" cy="10.5" r="1" fill="#F759F5" />
+              <circle cx="17.5" cy="13.5" r="1" fill="#3E36ED" />
+              <rect x="2" y="7" width="20" height="10" rx="5" stroke="#F759F5" strokeWidth="2" />
+            </svg>
+          </button>
+        )}
         <input
           type="text"
           value={value}
