@@ -14,19 +14,16 @@ import {
 } from "@/lib/chatInbox";
 import { useInboxMap, useTotalUnread } from "@/lib/useInboxUnread";
 import {
-  getMatchedList,
+  fetchMatchedListCached,
   getMessageList,
   parseApiChatMessages,
   prefetchMedia,
   chatRoomKey,
-  parseProfileCards,
   type ProfileCard,
 } from "@/lib/letsmeet";
 import { PageEnter, StaggerItem, StaggerList } from "@/lib/motion";
 
-function normalize(data: ProfileCard[] | ProfileCard | null | undefined): ProfileCard[] {
-  return parseProfileCards(data);
-}
+const PREVIEW_HYDRATE_LIMIT = 8;
 
 function inboxKeyForMatch(match: ProfileCard): string {
   return chatRoomKey(match);
@@ -43,51 +40,65 @@ export default function MessagesPage() {
   const totalUnread = useTotalUnread();
 
   const loadMatches = useCallback(async () => {
-    const res = await getMatchedList();
-    if (res.ok) {
-      const list = normalize(res.data);
-      setMatches(list);
-      pruneInboxToRooms(list.map((m) => inboxKeyForMatch(m)));
-      prefetchMedia(list.map((c) => c.profile_photo));
-      for (const m of list) {
-        upsertInboxPeer(inboxKeyForMatch(m), {
-          userId: m.user_id,
-          name: m.name,
-          photo: m.profile_photo,
-        });
-      }
-      return list;
+    const list = await fetchMatchedListCached();
+    setMatches(list);
+    pruneInboxToRooms(list.map((m) => inboxKeyForMatch(m)));
+    prefetchMedia(list.map((c) => c.profile_photo));
+    for (const m of list) {
+      upsertInboxPeer(inboxKeyForMatch(m), {
+        userId: m.user_id,
+        name: m.name,
+        photo: m.profile_photo,
+      });
     }
-    pruneInboxToRooms([]);
-    return [];
+    return list;
   }, []);
 
   const hydratePreviews = useCallback(async (list: ProfileCard[]) => {
     if (list.length === 0) return;
-    setHydrating(true);
-    const roomIds = list.map((m) => chatRoomKey(m));
-    await hydrateInboxFromApi(roomIds, async (roomId) => {
+    const priority = list.slice(0, PREVIEW_HYDRATE_LIMIT);
+    const rest = list.slice(PREVIEW_HYDRATE_LIMIT);
+    const fetchPage = async (roomId: string | number) => {
       const res = await getMessageList(roomId, 1);
       if (!res.ok) return [];
       return parseApiChatMessages(res.data);
-    });
+    };
+
+    setHydrating(true);
+    await hydrateInboxFromApi(
+      priority.map((m) => chatRoomKey(m)),
+      fetchPage,
+      4
+    );
     setHydrating(false);
+
+    if (rest.length > 0) {
+      void hydrateInboxFromApi(
+        rest.map((m) => chatRoomKey(m)),
+        fetchPage,
+        2
+      );
+    }
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const list = await loadMatches();
+      if (cancelled) return;
       setLoading(false);
       void hydratePreviews(list);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [loadMatches, hydratePreviews]);
 
   useEffect(() => {
     if (pathname !== "/messages") return;
     setAvatarEpoch((n) => n + 1);
     window.dispatchEvent(new Event("lm-inbox-change"));
-    void loadMatches();
-  }, [pathname, loadMatches]);
+  }, [pathname]);
 
   const filtered = useMemo(
     () =>

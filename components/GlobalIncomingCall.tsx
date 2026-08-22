@@ -8,10 +8,10 @@ import {
   buildVideoCallHref,
   callRoomIdsForMatch,
   callWsUrl,
-  getMatchedList,
+  fetchMatchedListCached,
   isLoggedIn,
-  parseProfileCards,
   stashChatPeer,
+  wsChatRoomIdsForMatch,
   type ProfileCard,
 } from "@/lib/letsmeet";
 
@@ -66,14 +66,11 @@ export default function GlobalIncomingCall() {
       return;
     }
 
-    const res = await getMatchedList();
-    if (!res.ok) return;
-
-    const matches = parseProfileCards(res.data);
+    const matches = await fetchMatchedListCached();
     const nextRooms = new Set<string>();
 
     for (const match of matches) {
-      const roomIds = callRoomIdsForMatch(match);
+      const roomIds = wsChatRoomIdsForMatch(match);
       for (const roomId of roomIds) {
         nextRooms.add(roomId);
         matchByRoomRef.current.set(roomId, match);

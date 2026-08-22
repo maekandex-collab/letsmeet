@@ -9,11 +9,11 @@ import {
   callRoomIdsForMatch,
   chatRoomKey,
   chatWsUrl,
-  getMatchedList,
+  fetchMatchedListCached,
   isLoggedIn,
   linkMatchRoomIds,
-  parseProfileCards,
   resolveNumericRoomId,
+  wsChatRoomIdsForMatch,
   type ProfileCard,
 } from "@/lib/letsmeet";
 
@@ -35,6 +35,7 @@ export default function GlobalChatListener() {
 
   const socketsRef = useRef<Map<string, WebSocket>>(new Map());
   const matchByRoomRef = useRef<Map<string, ProfileCard>>(new Map());
+  const syncingRef = useRef(false);
 
   const syncListeners = useCallback(async () => {
     if (!isLoggedIn()) {
@@ -43,76 +44,79 @@ export default function GlobalChatListener() {
       matchByRoomRef.current.clear();
       return;
     }
+    if (syncingRef.current) return;
+    syncingRef.current = true;
 
-    const res = await getMatchedList();
-    if (!res.ok) return;
+    try {
+      const matches = await fetchMatchedListCached();
+      pruneInboxToRooms(matches.map((m) => chatRoomKey(m)));
+      const nextRooms = new Set<string>();
 
-    const matches = parseProfileCards(res.data);
-    pruneInboxToRooms(matches.map((m) => chatRoomKey(m)));
-    const nextRooms = new Set<string>();
+      for (const match of matches) {
+        const canonicalKey = chatRoomKey(match);
+        const numeric = resolveNumericRoomId(match);
+        if (numeric != null) {
+          linkMatchRoomIds(numeric, [match.chatroom_id, canonicalKey, match.id]);
+        }
 
-    for (const match of matches) {
-      const canonicalKey = chatRoomKey(match);
-      const numeric = resolveNumericRoomId(match);
-      if (numeric != null) {
-        linkMatchRoomIds(numeric, [match.chatroom_id, canonicalKey, match.id]);
-      }
+        upsertInboxPeer(canonicalKey, {
+          userId: match.user_id,
+          name: match.name,
+          photo: match.profile_photo,
+        });
 
-      upsertInboxPeer(canonicalKey, {
-        userId: match.user_id,
-        name: match.name,
-        photo: match.profile_photo,
-      });
+        const roomIds = wsChatRoomIdsForMatch(match);
+        for (const roomId of roomIds) {
+          nextRooms.add(roomId);
+          matchByRoomRef.current.set(roomId, match);
 
-      const roomIds = callRoomIdsForMatch(match);
-      for (const roomId of roomIds) {
-        nextRooms.add(roomId);
-        matchByRoomRef.current.set(roomId, match);
+          if (socketsRef.current.has(roomId)) continue;
 
-        if (socketsRef.current.has(roomId)) continue;
-
-        const ws = new WebSocket(chatWsUrl(roomId));
-        ws.onmessage = (event) => {
-          let data: unknown;
-          try {
-            data = JSON.parse(event.data);
-          } catch {
-            return;
-          }
-
-          const parsed = parseWsChatMessage(data);
-          if (!parsed) return;
-
-          const matched = matchByRoomRef.current.get(roomId);
-          if (!matched) return;
-
-          if (isViewingMatchChat(pathnameRef.current, matched)) return;
-
-          deliverIncomingChatMessage(
-            chatRoomKey(matched),
-            parsed,
-            {
-              userId: matched.user_id,
-              name: matched.name,
-              photo: matched.profile_photo,
-            },
-            {
-              notify: true,
-              onMessagesPage: pathnameRef.current === "/messages",
+          const ws = new WebSocket(chatWsUrl(roomId));
+          ws.onmessage = (event) => {
+            let data: unknown;
+            try {
+              data = JSON.parse(event.data);
+            } catch {
+              return;
             }
-          );
-        };
 
-        socketsRef.current.set(roomId, ws);
-      }
-    }
+            const parsed = parseWsChatMessage(data);
+            if (!parsed) return;
 
-    for (const [roomId, ws] of Array.from(socketsRef.current.entries())) {
-      if (!nextRooms.has(roomId)) {
-        ws.close();
-        socketsRef.current.delete(roomId);
-        matchByRoomRef.current.delete(roomId);
+            const matched = matchByRoomRef.current.get(roomId);
+            if (!matched) return;
+
+            if (isViewingMatchChat(pathnameRef.current, matched)) return;
+
+            deliverIncomingChatMessage(
+              chatRoomKey(matched),
+              parsed,
+              {
+                userId: matched.user_id,
+                name: matched.name,
+                photo: matched.profile_photo,
+              },
+              {
+                notify: true,
+                onMessagesPage: pathnameRef.current === "/messages",
+              }
+            );
+          };
+
+          socketsRef.current.set(roomId, ws);
+        }
       }
+
+      for (const [roomId, ws] of Array.from(socketsRef.current.entries())) {
+        if (!nextRooms.has(roomId)) {
+          ws.close();
+          socketsRef.current.delete(roomId);
+          matchByRoomRef.current.delete(roomId);
+        }
+      }
+    } finally {
+      syncingRef.current = false;
     }
   }, []);
 
@@ -126,7 +130,7 @@ export default function GlobalChatListener() {
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
-    const interval = setInterval(() => void syncListeners(), 45000);
+    const interval = setInterval(() => void syncListeners(), 60_000);
 
     if (typeof window !== "undefined" && "Notification" in window) {
       if (Notification.permission === "default") {
@@ -142,7 +146,7 @@ export default function GlobalChatListener() {
       socketsRef.current.clear();
       matchByRoomRef.current.clear();
     };
-  }, [syncListeners, pathname]);
+  }, [syncListeners]);
 
   return null;
 }

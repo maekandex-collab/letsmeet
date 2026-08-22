@@ -7,7 +7,8 @@ import BottomNav from "@/components/BottomNav";
 import Avatar from "@/components/Avatar";
 import ProfileCarousel from "@/components/ProfileCarousel";
 import {
-  getMatchedList,
+  fetchMatchedListCached,
+  invalidateMatchedListCache,
   getLikeList,
   likeBack,
   extractError,
@@ -22,10 +23,6 @@ import {
   type ProfileCard,
 } from "@/lib/letsmeet";
 import { removeInboxRoom } from "@/lib/chatInbox";
-
-function normalize(data: ProfileCard[] | ProfileCard | null | undefined): ProfileCard[] {
-  return parseProfileCards(data);
-}
 
 function LikeCard({
   profile,
@@ -175,9 +172,11 @@ export default function MatchesPage() {
 
   useEffect(() => {
     (async () => {
-      const [m, l] = await Promise.all([getMatchedList(), getLikeList()]);
-      const matchList = m.ok ? normalize(m.data) : [];
-      const likeList = l.ok && Array.isArray(l.data) ? l.data : [];
+      const [matchList, l] = await Promise.all([
+        fetchMatchedListCached(),
+        getLikeList(),
+      ]);
+      const likeList = l.ok ? parseProfileCards(l.data) : [];
       setMatches(matchList);
       setLikes(likeList);
       prefetchMedia([...matchList, ...likeList].map((c) => c.profile_photo), 12, 4);
@@ -208,8 +207,9 @@ export default function MatchesPage() {
 
       setLikes((prev) => prev.filter((p) => p.user_id !== profile.user_id));
 
-      const m = await getMatchedList();
-      if (m.ok) setMatches(normalize(m.data));
+      invalidateMatchedListCache();
+      const refreshed = await fetchMatchedListCached({ fresh: true });
+      setMatches(refreshed);
 
       stashChatPeer(profile);
 
@@ -240,6 +240,7 @@ export default function MatchesPage() {
         return;
       }
 
+      invalidateMatchedListCache();
       setMatches((prev) =>
         prev.filter(
           (p) =>

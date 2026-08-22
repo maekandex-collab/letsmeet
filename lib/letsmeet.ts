@@ -686,9 +686,8 @@ export async function bootstrapChatRoomId(
   userId: string,
   chatroomParam?: string | null
 ): Promise<number | null> {
-  const res = await getMatchedList();
-  if (!res.ok) return null;
-  const match = parseProfileCards(res.data).find((m) => m.user_id === userId);
+  const res = await fetchMatchedListCached();
+  const match = res.find((m) => m.user_id === userId);
   if (!match) return null;
   const roomId = resolveNumericRoomId(match);
   if (roomId == null) return null;
@@ -767,9 +766,7 @@ export function peerMatchesRoom(
 export async function findMatchByRoomId(
   roomId: number | string
 ): Promise<ProfileCard | null> {
-  const res = await getMatchedList();
-  if (!res.ok) return null;
-  const cards = parseProfileCards(res.data);
+  const cards = await fetchMatchedListCached();
   const s = String(roomId).trim();
   const numeric = /^\d+$/.test(s) ? Number(s) : null;
   return (
@@ -816,6 +813,30 @@ export function callRoomIdsForMatch(card: ProfileCard): string[] {
   if (chatroom) ids.add(chatroom);
   if (ids.size === 0) ids.add(String(card.id));
   return Array.from(ids);
+}
+
+/** Skip phone/user ids — backend WS is keyed on chatroom UUID or small numeric room id. */
+export function isValidWsChatRoomId(roomId: string): boolean {
+  const s = roomId.trim();
+  if (!s) return false;
+  if (/^[0-9a-f-]{36}$/i.test(s)) return true;
+  if (s.includes("-") && !/^\d+$/.test(s)) return true;
+  if (/^\d+$/.test(s)) {
+    // Nigerian phones / swipe user ids (8099448550) are not chat room ids.
+    if (s.length >= 10) return false;
+    return Number(s) > 0;
+  }
+  return s.length >= 8;
+}
+
+export function wsChatRoomIdsForMatch(card: ProfileCard): string[] {
+  const chatroom = card.chatroom_id?.trim();
+  if (chatroom && isValidWsChatRoomId(chatroom)) return [chatroom];
+  const numeric = resolveNumericRoomId(card);
+  if (numeric != null && isValidWsChatRoomId(String(numeric))) {
+    return [String(numeric)];
+  }
+  return [];
 }
 
 // ─── Chat history (API + local fallback) ─────────────────────────────────────
@@ -2683,6 +2704,45 @@ export function getLikeList() {
 
 export function getMatchedList() {
   return request<ProfileCard[] | ProfileCard>("/matched/list", { auth: true });
+}
+
+const MATCHED_LIST_TTL_MS = 20_000;
+let matchedListCacheAt = 0;
+let matchedListInflight: Promise<ProfileCard[]> | null = null;
+let matchedListCached: ProfileCard[] = [];
+
+export function invalidateMatchedListCache(): void {
+  matchedListCacheAt = 0;
+  matchedListCached = [];
+  matchedListInflight = null;
+}
+
+/** Deduped matched/list — avoids 30+ parallel calls from chat listener + pages. */
+export async function fetchMatchedListCached(opts?: {
+  fresh?: boolean;
+}): Promise<ProfileCard[]> {
+  if (opts?.fresh) invalidateMatchedListCache();
+
+  const now = Date.now();
+  if (matchedListCached.length > 0 && now - matchedListCacheAt < MATCHED_LIST_TTL_MS) {
+    return matchedListCached;
+  }
+  if (matchedListInflight) return matchedListInflight;
+
+  matchedListInflight = getMatchedList()
+    .then((res) => {
+      const list = res.ok ? parseProfileCards(res.data) : [];
+      matchedListCached = list;
+      matchedListCacheAt = Date.now();
+      matchedListInflight = null;
+      return list;
+    })
+    .catch((err) => {
+      matchedListInflight = null;
+      throw err;
+    });
+
+  return matchedListInflight;
 }
 
 export async function sendMessage(
