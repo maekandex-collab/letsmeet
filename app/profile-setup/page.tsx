@@ -17,6 +17,7 @@ import {
   getLoginProfileCache,
   storeLocalProfileDraft,
   getLocalProfileDraft,
+  storeProfileExtrasForPhone,
 } from "@/lib/letsmeet";
 import { getDraft, clearDraft, dataUrlToBlob } from "@/lib/profileDraft";
 
@@ -101,6 +102,13 @@ export default function ProfileSetupPage() {
         savedAt: Date.now(),
       });
     }
+    storeProfileExtrasForPhone(getUser()?.phone ?? phone, {
+      about_me: draft.about_me?.trim(),
+      location: draft.location?.trim(),
+      interests: draft.interests?.length ? draft.interests.join(", ") : undefined,
+      sexual_orientation: draft.sexual_orientation,
+      religion: draftReligion ?? draft.religion ?? null,
+    });
     if (draftReligion) storeUserReligion(draftReligion);
     updateUser({ profileCompleted: true });
     clearDraft();

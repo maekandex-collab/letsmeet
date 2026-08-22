@@ -6,17 +6,18 @@ import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ProfilePhoto from "@/components/ProfilePhoto";
 import DiscoverEmptyState from "@/components/DiscoverEmptyState";
+import InlineNotice from "@/components/InlineNotice";
 import {
   swipeProfile,
   prefetchMedia,
   isLoggedIn,
   readFeedSnapshot,
   writeFeedSnapshot,
-  markSwipedCard,
+  markSwipedTarget,
   swipeTargetId,
   extractError,
   clearFeedSnapshot,
-  resetDiscoverLocalState,
+  resetDiscoverFilters,
   fetchDiscoverFeed,
   linkMatchRoomIds,
   extractRoomIdFromMatchResponse,
@@ -113,7 +114,7 @@ export default function HomePage() {
   }
 
   function handleClearFilters() {
-    resetDiscoverLocalState();
+    resetDiscoverFilters();
     handleRefreshDiscover();
   }
 
@@ -145,16 +146,16 @@ export default function HomePage() {
 
     try {
       const res = await swipeProfile(card, type);
-      const accepted = res.ok || res.status === 400;
+      const targetId = swipeTargetId(card);
 
-      if (!accepted) {
+      if (!res.ok) {
         setSwipeError(extractError(res.data, "Could not save your swipe. Try again."));
         setDirection(null);
         setAnimating(false);
         return;
       }
 
-      markSwipedCard(card);
+      markSwipedTarget(targetId);
 
       if (dir === "right" && res.ok && res.data?.matched) {
         const roomId = extractRoomIdFromMatchResponse(res.data);
@@ -310,13 +311,15 @@ export default function HomePage() {
         </div>
 
         {feedError && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
+          <InlineNotice kicker="Discover">
             {feedError}
-          </p>
+          </InlineNotice>
         )}
 
         {swipeError && (
-          <p className="text-xs text-red-500 mb-2 px-1">{swipeError}</p>
+          <InlineNotice tone="error" kicker="Swipe">
+            {swipeError}
+          </InlineNotice>
         )}
 
         <div

@@ -21,6 +21,8 @@ import {
   getLocalProfileDraft,
   profileImageUrlsFromDraft,
   storeLoginProfileCache,
+  storeProfileExtrasForPhone,
+  getProfileExtrasForPhone,
   clearLoginProfileCache,
   clearStoredHashedUserId,
   profileMatchesSession,
@@ -193,6 +195,8 @@ export default function AccountPage() {
   const [success, setSuccess] = useState("");
   const [localOnlyNotice, setLocalOnlyNotice] = useState("");
 
+  const profileCompleted = getUser()?.profileCompleted ?? false;
+
   function applyProfilePhotos(urls: [string | null, string | null, string | null]) {
     prefetchMedia(urls.filter(Boolean) as string[], 3);
     setPhotos(photoSlotsFromUrls(urls));
@@ -206,21 +210,39 @@ export default function AccountPage() {
    */
   const applyLoginCacheFallback = useCallback((): boolean => {
     const sessionName = (getUser()?.fullName ?? "").trim();
+    const sessionPhone = getUser()?.phone;
+    const phoneExtras = getProfileExtrasForPhone(sessionPhone);
     const onboardingDraft = getDraft();
-    if (onboardingDraft.about_me?.trim()) {
-      setAboutMe((prev) => prev || onboardingDraft.about_me!.trim());
+    const cachedAbout =
+      onboardingDraft.about_me?.trim() ||
+      phoneExtras?.about_me?.trim() ||
+      "";
+    if (cachedAbout) {
+      setAboutMe((prev) => prev || cachedAbout);
     }
-    if (onboardingDraft.location?.trim()) {
-      setLocation((prev) => prev || onboardingDraft.location!.trim());
+    if (onboardingDraft.location?.trim() || phoneExtras?.location?.trim()) {
+      setLocation(
+        (prev) => prev || onboardingDraft.location?.trim() || phoneExtras?.location?.trim() || ""
+      );
     }
     if (onboardingDraft.interests?.length) {
       setInterests((prev) => prev || onboardingDraft.interests!.join(", "));
+    } else if (phoneExtras?.interests?.trim()) {
+      setInterests((prev) => prev || phoneExtras.interests!.trim());
     }
-    if (onboardingDraft.sexual_orientation) {
-      setSexualOrientation((prev) => prev || onboardingDraft.sexual_orientation!);
+    if (onboardingDraft.sexual_orientation || phoneExtras?.sexual_orientation) {
+      setSexualOrientation(
+        (prev) =>
+          prev ||
+          onboardingDraft.sexual_orientation ||
+          phoneExtras?.sexual_orientation ||
+          ""
+      );
     }
-    if (onboardingDraft.religion) {
-      setReligion((prev) => prev || onboardingDraft.religion!);
+    if (onboardingDraft.religion || phoneExtras?.religion) {
+      setReligion(
+        (prev) => prev || onboardingDraft.religion || phoneExtras?.religion || null
+      );
     }
 
     const draft = getLocalProfileDraft();
@@ -321,6 +343,7 @@ export default function AccountPage() {
             const cachedAbout =
               getLocalProfileDraft()?.about_me?.trim() ||
               getLoginProfileCache()?.about_me?.trim() ||
+              getProfileExtrasForPhone(getUser()?.phone)?.about_me?.trim() ||
               getDraft().about_me?.trim() ||
               "";
             if (cachedAbout) setAboutMe(cachedAbout);
@@ -340,6 +363,7 @@ export default function AccountPage() {
               p.about_me?.trim() ||
               getLocalProfileDraft()?.about_me?.trim() ||
               getLoginProfileCache()?.about_me?.trim() ||
+              getProfileExtrasForPhone(getUser()?.phone)?.about_me?.trim() ||
               getDraft().about_me?.trim() ||
               undefined,
             location: p.location || undefined,
@@ -643,7 +667,7 @@ export default function AccountPage() {
                   About Me
                 </h2>
                 <span className="text-[10px] font-bold text-accent bg-[#EEEEFF] px-2.5 py-1 rounded-full uppercase tracking-wide">
-                  Editable
+                  {profileCompleted ? "Device only" : "Editable"}
                 </span>
               </div>
               <div className="relative">
@@ -663,7 +687,9 @@ export default function AccountPage() {
                 </span>
               </div>
               <p className="text-[11px] text-muted mt-2">
-                Saved with your photos when you tap Save Changes.
+                {profileCompleted
+                  ? "You can edit this here, but the server blocks updates on completed profiles — changes stay on this device until the backend adds an edit endpoint."
+                  : "Saved with your photos when you tap Save Changes."}
               </p>
             </div>
 

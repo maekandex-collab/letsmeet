@@ -6,8 +6,10 @@ import ProfilePhoto from "@/components/ProfilePhoto";
 import {
   getSingleProfile,
   likeBack,
+  profileNumericId,
   swipe,
   markSwipedTarget,
+  swipeTargetId,
   prefetchMedia,
   analyzeMatchCompatibility,
   buildMatchComparisonContent,
@@ -72,14 +74,22 @@ function ProfileContent() {
     if (!numericId || acting) return;
     setActing(true);
     try {
+      const swipeId =
+        source === "likes"
+          ? profileNumericId({ id: Number(numericId) } as ProfileCard)
+          : swipeTargetId({ id: Number(numericId) || 0, user_id: hashId || numericId } as ProfileCard);
       const res =
         source === "likes"
           ? await likeBack({ id: Number(numericId), user_id: hashId } as ProfileCard)
-          : await swipe(numericId, "like");
-      if (source !== "likes" && (res.ok || res.status === 400)) {
-        markSwipedTarget(numericId);
+          : await swipe(swipeId, "like");
+      if (source !== "likes" && res.ok) {
+        markSwipedTarget(swipeId);
       }
-      if (res.ok && res.data?.matched) router.push("/match-found");
+      if (!res.ok) {
+        setError(extractError(res.data, "Could not save your like."));
+        return;
+      }
+      if (res.data?.matched) router.push("/match-found");
       else router.back();
     } catch {
       setError("Could not like this profile.");
@@ -92,12 +102,16 @@ function ProfileContent() {
     if (!numericId || acting) return;
     setActing(true);
     try {
-      const res = await swipe(
-        source === "likes" ? String(numericId) : numericId,
-        "pass"
-      );
-      if (source !== "likes" && (res.ok || res.status === 400)) {
-        markSwipedTarget(numericId);
+      const swipeId = swipeTargetId({
+        id: Number(numericId) || 0,
+        user_id: hashId || numericId,
+      } as ProfileCard);
+      const res =
+        source === "likes"
+          ? await swipe(profileNumericId({ id: Number(numericId) } as ProfileCard), "pass")
+          : await swipe(swipeId, "pass");
+      if (source !== "likes" && res.ok) {
+        markSwipedTarget(swipeId);
       }
       router.back();
     } catch {

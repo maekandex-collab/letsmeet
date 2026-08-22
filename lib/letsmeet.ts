@@ -39,6 +39,8 @@ export function callWsUrl(roomId: string | number): string {
 const TOKEN_KEY = "lm_token";
 const USER_KEY = "lm_user";
 const LOGIN_PROFILE_CACHE_KEY = "lm_login_profile_cache";
+/** Survives logout so About Me / interests survive re-login on this device. */
+const PROFILE_EXTRAS_BY_PHONE_KEY = "lm_profile_extras_by_phone";
 const LOCAL_PROFILE_DRAFT_KEY = "lm_local_profile_draft";
 
 export interface SessionUser {
@@ -208,12 +210,27 @@ export function clearSession(): void {
   }
 }
 
-/** Clear feed cache, swiped ids, and filter prefs — call on sign-up / sign-in / logout. */
+/** Reset age/religion filters and in-memory feed cache — keeps swipe history. */
+export function resetDiscoverFilters(): void {
+  clearFeedSnapshot();
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      "lm_discover_prefs",
+      JSON.stringify({ min_age: 18, max_age: 40, religion: "" })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+/** Full discover reset — call on sign-up / logout only (not routine sign-in). */
 export function resetDiscoverLocalState(): void {
   clearFeedSnapshot();
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem("lm_swiped_targets");
+    localStorage.removeItem(swipedStorageKey());
+    localStorage.removeItem(SWIPED_KEY);
     localStorage.setItem(
       "lm_discover_prefs",
       JSON.stringify({ min_age: 18, max_age: 40, religion: "" })
@@ -1175,10 +1192,75 @@ export function loginProfileCacheFromResponse(
   return cache;
 }
 
+type ProfileExtras = {
+  about_me?: string;
+  location?: string;
+  interests?: string;
+  sexual_orientation?: string;
+  religion?: string | null;
+};
+
+function readProfileExtrasMap(): Record<string, ProfileExtras> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PROFILE_EXTRAS_BY_PHONE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ProfileExtras>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Persist editable text fields keyed by phone so they survive logout. */
+export function storeProfileExtrasForPhone(
+  phone: string | null | undefined,
+  extras: ProfileExtras
+): void {
+  if (typeof window === "undefined") return;
+  const key = normalizePhone(phone ?? "");
+  if (key.length < 10) return;
+  try {
+    const map = readProfileExtrasMap();
+    const prev = map[key] ?? {};
+    map[key] = {
+      about_me: extras.about_me?.trim() || prev.about_me,
+      location: extras.location?.trim() || prev.location,
+      interests: extras.interests?.trim() || prev.interests,
+      sexual_orientation: extras.sexual_orientation?.trim() || prev.sexual_orientation,
+      religion:
+        extras.religion !== undefined ? extras.religion : prev.religion ?? null,
+    };
+    window.localStorage.setItem(PROFILE_EXTRAS_BY_PHONE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota
+  }
+}
+
+export function getProfileExtrasForPhone(
+  phone: string | null | undefined
+): ProfileExtras | null {
+  const key = normalizePhone(phone ?? "");
+  if (key.length < 10) return null;
+  const entry = readProfileExtrasMap()[key];
+  if (!entry || typeof entry !== "object") return null;
+  return entry;
+}
+
 export function storeLoginProfileCache(cache: LoginProfileCache): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LOGIN_PROFILE_CACHE_KEY, JSON.stringify(cache));
+    const phone = getUser()?.phone;
+    if (phone) {
+      storeProfileExtrasForPhone(phone, {
+        about_me: cache.about_me,
+        location: cache.location,
+        interests: cache.interests,
+        sexual_orientation: cache.sexual_orientation,
+        religion: cache.religion,
+      });
+    }
   } catch {
     // ignore quota
   }
@@ -1292,15 +1374,39 @@ export function buildOwnProfileFromLoginCache(
   return {
     name,
     date_of_birth: age,
-    about_me: (cache?.about_me ?? "").trim(),
+    about_me: (
+      cache?.about_me ||
+      getLocalProfileDraft()?.about_me ||
+      getProfileExtrasForPhone(user?.phone)?.about_me ||
+      ""
+    ).trim(),
     profile_image,
     image1,
     image2,
-    location: (cache?.location ?? "").trim(),
-    religion: cache?.religion ?? null,
+    location: (
+      cache?.location ||
+      getLocalProfileDraft()?.location ||
+      getProfileExtrasForPhone(user?.phone)?.location ||
+      ""
+    ).trim(),
+    religion:
+      cache?.religion ??
+      getLocalProfileDraft()?.religion ??
+      getProfileExtrasForPhone(user?.phone)?.religion ??
+      null,
     gender,
-    sexual_orientation: (cache?.sexual_orientation ?? "").trim(),
-    interests: (cache?.interests ?? "").trim(),
+    sexual_orientation: (
+      cache?.sexual_orientation ||
+      getLocalProfileDraft()?.sexual_orientation ||
+      getProfileExtrasForPhone(user?.phone)?.sexual_orientation ||
+      ""
+    ).trim(),
+    interests: (
+      cache?.interests ||
+      getLocalProfileDraft()?.interests ||
+      getProfileExtrasForPhone(user?.phone)?.interests ||
+      ""
+    ).trim(),
   };
 }
 
@@ -1371,9 +1477,10 @@ export function persistLoginSession(
   extras?: Partial<SessionUser>
 ): void {
   const hash = extractHashedUserId(loginData);
-  const profileLookupId =
-    hash ??
-    (loginData.user_id > 0 ? String(loginData.user_id) : null);
+  // Only persist real profile lookup ids — short JWT user_ids (e.g. 509) fail
+  // on PUT /single/user/profile and must not wipe a good stored hash.
+  const profileLookupId = hash ?? extras?.hashedUserId ?? null;
+  const sessionPhone = normalizePhone(loginData.phone ?? phone);
 
   setSession(loginData.token, {
     userId: loginData.user_id,
@@ -1381,16 +1488,22 @@ export function persistLoginSession(
     phone: loginData.phone ?? phone,
     dateOfBirth: loginData.date_of_birth ?? extras?.dateOfBirth,
     profileCompleted: loginData.profile_completed,
-    hashedUserId: profileLookupId ?? extras?.hashedUserId,
+    hashedUserId: profileLookupId ?? undefined,
   });
-  if (profileLookupId) {
+  if (profileLookupId && !/^\d{1,6}$/.test(profileLookupId)) {
     storeHashedUserId(profileLookupId);
   } else if (typeof window !== "undefined") {
-    // Drop any stale phone-number "hash" left from older app versions.
+    // Drop any stale phone-number / short-id "hash" left from older app versions.
     try {
       const stale = window.localStorage.getItem(HASHED_USER_ID_KEY);
-      const sessionPhone = normalizePhone(loginData.phone ?? phone);
-      if (stale && sessionPhone && (stale === sessionPhone || stale.endsWith(sessionPhone))) {
+      if (
+        stale &&
+        ( /^\d{1,6}$/.test(stale) ||
+          (sessionPhone &&
+            (stale === sessionPhone ||
+              stale.endsWith(sessionPhone) ||
+              sessionPhone.endsWith(stale))))
+      ) {
         window.localStorage.removeItem(HASHED_USER_ID_KEY);
       }
     } catch {
@@ -1398,8 +1511,39 @@ export function persistLoginSession(
     }
   }
 
-  const cache = loginProfileCacheFromResponse(loginData);
-  if (cache) storeLoginProfileCache(cache);
+  // Login does not return about_me — merge prior device extras so Account can show it.
+  const priorCache = getLoginProfileCache();
+  const phoneExtras = getProfileExtrasForPhone(sessionPhone);
+  const fromLogin = loginProfileCacheFromResponse(loginData);
+  if (fromLogin || priorCache || phoneExtras) {
+    storeLoginProfileCache({
+      profile_image: fromLogin?.profile_image ?? priorCache?.profile_image ?? null,
+      image1: fromLogin?.image1 ?? priorCache?.image1 ?? null,
+      image2: fromLogin?.image2 ?? priorCache?.image2 ?? null,
+      gender: fromLogin?.gender || priorCache?.gender,
+      full_name: fromLogin?.full_name || priorCache?.full_name,
+      about_me:
+        phoneExtras?.about_me?.trim() ||
+        priorCache?.about_me?.trim() ||
+        undefined,
+      location:
+        phoneExtras?.location?.trim() ||
+        priorCache?.location?.trim() ||
+        undefined,
+      interests:
+        phoneExtras?.interests?.trim() ||
+        priorCache?.interests?.trim() ||
+        undefined,
+      sexual_orientation:
+        phoneExtras?.sexual_orientation?.trim() ||
+        priorCache?.sexual_orientation?.trim() ||
+        undefined,
+      religion:
+        phoneExtras?.religion !== undefined
+          ? phoneExtras.religion
+          : priorCache?.religion ?? null,
+    });
+  }
 
   try {
     window.localStorage.removeItem("lm_chat_inbox");
@@ -1421,6 +1565,25 @@ export interface ProfileCard {
   room_id?: number;
   /** Match row id for POST /unmatched when present. */
   match_id?: string;
+}
+
+/** Build display name from varying LetsMeet list/feed payload shapes. */
+export function resolveCardDisplayName(raw: Record<string, unknown>): string {
+  const pick = (...keys: string[]) => {
+    for (const key of keys) {
+      const v = raw[key];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  };
+
+  const direct = pick("name", "full_name", "names");
+  if (direct) return direct;
+
+  const first = pick("first_name");
+  const last = pick("last_name");
+  const combined = [first, last].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  return combined || "User";
 }
 
 /** Map varying backend field names onto ProfileCard. */
@@ -1450,7 +1613,7 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
   return {
     id: typeof idRaw === "number" ? idRaw : Number(idRaw) || 0,
     user_id: userRaw != null ? String(userRaw) : "",
-    name: String(raw.name ?? raw.full_name ?? "User"),
+    name: resolveCardDisplayName(raw),
     location: String(raw.location ?? ""),
     age: typeof raw.age === "number" ? raw.age : Number(raw.age) || 0,
     profile_photo: photo,
@@ -1646,24 +1809,8 @@ export type SaveAccountProfileResult =
 export async function saveAccountProfile(
   fields: SaveAccountProfileInput
 ): Promise<SaveAccountProfileResult> {
-  const full = await uploadProfile(fields);
-  if (full.ok || full.status === 500) {
-    return { ok: true };
-  }
-
-  if (isProfileAlreadyCompletedError(full)) {
-    const image1 = fields.image1 ?? fields.profile_image;
-    const image2 = fields.image2 ?? fields.profile_image;
-    const photos = await uploadProfileImages({
-      profile_image: fields.profile_image,
-      image1,
-      image2,
-    });
-    if (photos.ok) {
-      return { ok: true };
-    }
-
-    const urls = fields.photoUrls ?? [null, null, null];
+  const urls = fields.photoUrls ?? [null, null, null];
+  const persistLocalText = () => {
     storeLocalProfileDraft({
       full_name: fields.fullName,
       gender: fields.gender,
@@ -1689,10 +1836,35 @@ export async function saveAccountProfile(
       sexual_orientation: fields.sexual_orientation,
       religion: fields.religion ?? null,
     });
+    storeProfileExtrasForPhone(getUser()?.phone, {
+      about_me: fields.about_me,
+      location: fields.location,
+      interests: fields.interests,
+      sexual_orientation: fields.sexual_orientation,
+      religion: fields.religion ?? null,
+    });
+  };
+
+  const full = await uploadProfile(fields);
+  if (full.ok || full.status === 500) {
+    persistLocalText();
+    return { ok: true };
+  }
+
+  if (isProfileAlreadyCompletedError(full)) {
+    const image1 = fields.image1 ?? fields.profile_image;
+    const image2 = fields.image2 ?? fields.profile_image;
+    const photos = await uploadProfileImages({
+      profile_image: fields.profile_image,
+      image1,
+      image2,
+    });
+    // Completed profiles reject text updates — always keep About Me on-device.
+    persistLocalText();
     if (fields.fullName?.trim()) {
       updateUser({ fullName: fields.fullName.trim() });
     }
-    return { ok: true, localOnly: true };
+    return { ok: true, localOnly: !photos.ok };
   }
 
   return {
@@ -1833,7 +2005,7 @@ export async function fetchDiscoverFeed(): Promise<DiscoverFeedResult> {
       return {
         ok: true,
         cards: bare.cards,
-        notice: "Showing all available profiles (age filter had no matches).",
+        notice: "No one matched your age filter — showing everyone available instead.",
         platformUserCount: bare.all.length,
       };
     }
@@ -2199,7 +2371,7 @@ export function normalizeSingleProfile(raw: Record<string, unknown>): SingleProf
   }
 
   return {
-    name: String(raw.name ?? raw.full_name ?? ""),
+    name: resolveCardDisplayName(raw),
     date_of_birth: dateOfBirth,
     about_me: String(
       raw.about_me ?? raw.about ?? raw.bio ?? raw.description ?? ""
@@ -2444,7 +2616,8 @@ export function profileNumericId(card: Pick<ProfileCard, "id">): string {
 
 /** Discover feed — swipe right (like) or left (pass). */
 export function swipeProfile(card: ProfileCard, type: "like" | "pass") {
-  return swipe(swipeTargetId(card), type);
+  const targetId = swipeTargetId(card);
+  return swipe(targetId, type);
 }
 
 /** “Liked you” — they already liked you; you like back to match. */
@@ -2456,10 +2629,23 @@ export function likeBack(card: ProfileCard) {
 
 const SWIPED_KEY = "lm_swiped_targets";
 
+function swipedStorageKey(): string {
+  const uid = getUser()?.userId;
+  return uid ? `lm_swiped_v2_${uid}` : SWIPED_KEY;
+}
+
 export function getSwipedTargetIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = localStorage.getItem(SWIPED_KEY);
+    const key = swipedStorageKey();
+    let raw = localStorage.getItem(key);
+    if (!raw && key !== SWIPED_KEY) {
+      raw = localStorage.getItem(SWIPED_KEY);
+      if (raw) {
+        localStorage.setItem(key, raw);
+        localStorage.removeItem(SWIPED_KEY);
+      }
+    }
     const list = raw ? (JSON.parse(raw) as string[]) : [];
     return new Set(list);
   } catch {
@@ -2468,10 +2654,10 @@ export function getSwipedTargetIds(): Set<string> {
 }
 
 export function markSwipedTarget(targetId: string): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !targetId.trim()) return;
   const set = getSwipedTargetIds();
-  set.add(targetId);
-  localStorage.setItem(SWIPED_KEY, JSON.stringify(Array.from(set)));
+  set.add(targetId.trim());
+  localStorage.setItem(swipedStorageKey(), JSON.stringify(Array.from(set)));
 }
 
 export function markSwipedCard(card: ProfileCard): void {

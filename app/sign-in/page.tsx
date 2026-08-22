@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import LetsMeetLogo from "@/components/LetsMeetLogo";
-import { loginUser, interpretLoginResponse, persistLoginSession, normalizePhone, resetDiscoverLocalState } from "@/lib/letsmeet";
+import { loginUser, interpretLoginResponse, persistLoginSession, normalizePhone, clearFeedSnapshot } from "@/lib/letsmeet";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -30,7 +30,7 @@ export default function SignInPage() {
         setError(result.message);
         return;
       }
-      resetDiscoverLocalState();
+      clearFeedSnapshot();
       persistLoginSession(result.data, number);
       router.push(result.data?.profile_completed ? "/home" : "/setup"); 
     } catch {
