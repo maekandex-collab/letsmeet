@@ -296,8 +296,8 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex flex-col px-3 sm:px-4 pt-header pb-bottom-nav h-dvh">
-        <div className="flex items-center justify-between mb-3 animate-fade-up">
+      <div className="flex flex-col flex-1 min-h-0 px-3 sm:px-4 pt-header pb-bottom-nav">
+        <div className="flex items-center justify-between mb-2 sm:mb-3 shrink-0 animate-fade-up">
           <div>
             <p className="section-kicker mb-1">Discover</p>
             <h2 className="text-2xl font-bold text-dark leading-none">People near you</h2>
@@ -323,8 +323,8 @@ export default function HomePage() {
         )}
 
         <div
-          className="relative mx-auto w-full max-w-[430px] shrink-0 overflow-hidden touch-none"
-          style={{ height: "clamp(340px, 56dvh, 520px)", touchAction: "none" }}
+          className="relative mx-auto w-full max-w-[430px] flex-1 min-h-[200px] max-h-[min(520px,52dvh)] shrink overflow-hidden touch-none"
+          style={{ touchAction: "none" }}
         >
           {loading && (
             <div className="absolute inset-0 rounded-[28px] overflow-hidden border border-primary/10 bg-white shadow-card">
@@ -491,7 +491,7 @@ export default function HomePage() {
         </div>
 
         {!loading && cards.length > 0 && (
-          <div className="flex items-center justify-center gap-8 mt-4 shrink-0">
+          <div className="flex items-center justify-center gap-8 mt-2 sm:mt-4 shrink-0 pb-1">
             <button
               type="button"
               onClick={() => handleSwipe("left")}

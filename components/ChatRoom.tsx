@@ -103,7 +103,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string>("");
   const peerTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { keyboardOpen, height: viewportHeight, offsetTop } = useVisualViewport();
+  const { keyboardOpen, height: viewportHeight, offsetTop, keyboardInset } = useVisualViewport();
 
   const storageKey = String(roomId);
 
@@ -125,6 +125,14 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   useEffect(() => {
     if (keyboardOpen) scrollBottom(false);
   }, [keyboardOpen, scrollBottom]);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   useEffect(() => {
     markRoomRead(roomId);
@@ -462,14 +470,10 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
 
   return (
     <div
-      className="mobile-shell flex flex-col bg-[#f8f3fa] overflow-hidden"
+      className="mobile-shell flex flex-col bg-[#f8f3fa] overflow-hidden fixed inset-x-0 mx-auto z-40"
       style={{
-        position: "fixed",
-        left: "50%",
-        transform: "translateX(-50%)",
         top: offsetTop,
         height: viewportHeight ?? "100dvh",
-        width: "100%",
         maxWidth: "600px",
       }}
     >
@@ -693,6 +697,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         sending={sending}
         error={error}
         keyboardOpen={keyboardOpen}
+        keyboardInset={keyboardInset}
         onFocus={() => scrollBottom(false)}
         onOpenGames={() => setGamePickerOpen(true)}
       />

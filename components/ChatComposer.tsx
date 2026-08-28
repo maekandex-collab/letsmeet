@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 interface ChatComposerProps {
   value: string;
   onChange: (value: string) => void;
@@ -9,6 +11,7 @@ interface ChatComposerProps {
   onFocus?: () => void;
   /** When the keyboard is open, drop home-indicator padding so the bar sits flush. */
   keyboardOpen?: boolean;
+  keyboardInset?: number;
   onOpenGames?: () => void;
 }
 
@@ -20,9 +23,26 @@ export default function ChatComposer({
   error,
   onFocus,
   keyboardOpen = false,
+  keyboardInset = 0,
   onOpenGames,
 }: ChatComposerProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const canSend = value.trim().length > 0 && !sending;
+
+  function bringInputIntoView() {
+    const el = inputRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    window.setTimeout(() => {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }, 320);
+  }
+
+  useEffect(() => {
+    if (keyboardOpen) bringInputIntoView();
+  }, [keyboardOpen]);
 
   return (
     <div className="relative z-20 w-full flex-shrink-0 bg-white/95 backdrop-blur-xl border-t border-primary/10 shadow-[0_-8px_28px_rgba(42,20,54,0.08)]">
@@ -31,8 +51,9 @@ export default function ChatComposer({
         className="px-3 pt-2.5 flex items-center gap-2"
         style={{
           paddingBottom: keyboardOpen
-            ? "0.625rem"
+            ? "max(0.625rem, env(safe-area-inset-bottom, 0px))"
             : "calc(0.625rem + env(safe-area-inset-bottom, 0px))",
+          marginBottom: keyboardOpen && keyboardInset > 0 ? 0 : undefined,
         }}
       >
         {onOpenGames && (
@@ -51,6 +72,7 @@ export default function ChatComposer({
           </button>
         )}
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -60,13 +82,16 @@ export default function ChatComposer({
               if (canSend) onSend();
             }
           }}
-          onFocus={onFocus}
+          onFocus={() => {
+            onFocus?.();
+            bringInputIntoView();
+          }}
           placeholder="Type a message..."
           inputMode="text"
           enterKeyHint="send"
           autoComplete="off"
           autoCorrect="on"
-          className="flex-1 h-11 px-4 rounded-[22px] bg-[#f4eef6] border border-primary/10 text-[16px] text-dark placeholder-muted focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/25 transition-all"
+          className="flex-1 min-w-0 h-11 px-4 rounded-[22px] bg-[#f4eef6] border border-primary/10 text-[16px] text-dark placeholder-muted focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/25 transition-all"
         />
         <button
           type="button"

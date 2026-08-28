@@ -125,7 +125,7 @@ export default function WelcomeCarousel() {
 
   return (
     <div
-      className="mobile-shell relative h-dvh min-h-dvh overflow-hidden select-none"
+      className="mobile-shell relative flex flex-col h-dvh max-h-dvh min-h-0 overflow-hidden select-none"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={onTouchStart}
@@ -183,18 +183,17 @@ export default function WelcomeCarousel() {
         }}
       />
 
-      {/* Content stage */}
+      {/* Content — scrolls on short screens so Sign In is always reachable */}
       <div
-        className="relative z-10 h-full flex flex-col px-7 pb-44"
+        className="relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain"
         role="region"
         aria-roledescription="carousel"
         aria-label="Welcome to LetsMeet"
       >
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          {/* Persistent logo — never remounts between slides */}
-          <div className="relative mb-8">
+        <div className="flex flex-col items-center justify-center min-h-full px-6 sm:px-7 pt-safe pb-6 text-center">
+          <div className="relative mb-6 sm:mb-8 mt-4">
             <div className="absolute inset-0 scale-150 rounded-full bg-primary/20 blur-2xl" />
-            <div className="relative w-[5.25rem] h-[5.25rem] rounded-[26px] bg-white/95 shadow-2xl flex items-center justify-center p-2.5 animate-splash-glow">
+            <div className="relative w-[4.5rem] h-[4.5rem] sm:w-[5.25rem] sm:h-[5.25rem] rounded-[22px] sm:rounded-[26px] bg-white/95 shadow-2xl flex items-center justify-center p-2.5 animate-splash-glow">
               <LetsMeetLogo size={70} priority />
             </div>
 
@@ -244,7 +243,7 @@ export default function WelcomeCarousel() {
           </div>
 
           {/* Crossfading copy — same typography, no color flip */}
-          <div className="relative w-full max-w-[20rem] min-h-[11.5rem]">
+          <div className="relative w-full max-w-[20rem] min-h-[9.5rem] sm:min-h-[11.5rem]">
             {SLIDES.map((s, i) => {
               const active = i === index;
               return (
@@ -260,7 +259,7 @@ export default function WelcomeCarousel() {
                   <p className="text-[11px] font-semibold text-white/60 uppercase tracking-[0.28em] mb-3">
                     {s.eyebrow}
                   </p>
-                  <h1 className="text-[1.85rem] sm:text-3xl font-extrabold text-white leading-snug tracking-tight">
+                  <h1 className="text-[1.55rem] sm:text-[1.85rem] md:text-3xl font-extrabold text-white leading-snug tracking-tight">
                     {s.title}
                   </h1>
                   <p className="text-[15px] text-white/60 leading-6 mt-4">{s.body}</p>
@@ -271,8 +270,8 @@ export default function WelcomeCarousel() {
         </div>
       </div>
 
-      {/* Persistent CTA chrome — same look on every slide */}
-      <div className="absolute inset-x-0 bottom-0 z-20 px-6 pt-8 pb-9 flex flex-col items-center gap-4 bg-gradient-to-t from-[#14051e] via-[#14051e]/85 to-transparent">
+      {/* Persistent CTA — pinned above safe area, always tappable */}
+      <div className="relative z-20 flex-shrink-0 px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] flex flex-col items-center gap-3 sm:gap-4 bg-gradient-to-t from-[#14051e] via-[#14051e]/92 to-[#14051e]/70">
         <div className="flex items-center gap-2" role="tablist" aria-label="Welcome slides">
           {SLIDES.map((s, i) => {
             const active = i === index;

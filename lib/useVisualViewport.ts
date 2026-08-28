@@ -9,6 +9,8 @@ export type VisualViewportLayout = {
   height: number | null;
   /** Offset from the top of the layout viewport to the visual viewport. */
   offsetTop: number;
+  /** Approximate keyboard overlap in CSS pixels. */
+  keyboardInset: number;
 };
 
 /**
@@ -20,6 +22,7 @@ export function useVisualViewport(): VisualViewportLayout {
     keyboardOpen: false,
     height: null,
     offsetTop: 0,
+    keyboardInset: 0,
   });
 
   useEffect(() => {
@@ -31,17 +34,18 @@ export function useVisualViewport(): VisualViewportLayout {
         keyboardOpen: false,
         height: window.innerHeight,
         offsetTop: 0,
+        keyboardInset: 0,
       });
       return;
     }
 
     const update = () => {
-      // Treat a meaningful shrink vs layout viewport as "keyboard open".
-      const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const keyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       setLayout({
-        keyboardOpen: covered > 80,
+        keyboardOpen: keyboardInset > 80,
         height: vv.height,
         offsetTop: vv.offsetTop,
+        keyboardInset,
       });
     };
 
@@ -49,11 +53,13 @@ export function useVisualViewport(): VisualViewportLayout {
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
     window.addEventListener("orientationchange", update);
+    window.addEventListener("focusin", update);
 
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
       window.removeEventListener("orientationchange", update);
+      window.removeEventListener("focusin", update);
     };
   }, []);
 
