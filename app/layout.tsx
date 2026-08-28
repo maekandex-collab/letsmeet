@@ -7,7 +7,8 @@ import { ActiveCallProvider } from "@/lib/ActiveCallContext";
 import FloatingCallBar from "@/components/FloatingCallBar";
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://letsmeet-sand.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  "https://letsmeet-sand.vercel.app";
 
 const title = "LetsMeet — Match, Chat, Love!";
 const description =
