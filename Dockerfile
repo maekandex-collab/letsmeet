@@ -11,9 +11,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Production defaults (Coolify). Staging: https://mtnstaging.lenhub.net / wss://mtnstaging.lenhub.net
 ARG LETSMEET_API_BASE_URL=https://mtn.lenhub.net
 ARG NEXT_PUBLIC_LETSMEET_BASE_URL=https://mtn.lenhub.net
-ARG NEXT_PUBLIC_SITE_URL=https://letsmeet.viaspark.site
+ARG NEXT_PUBLIC_SITE_URL=https://www.letsmeet.date
 ARG NEXT_PUBLIC_LETSMEET_WS_BASE_URL=wss://mtn.lenhub.net
 ENV LETSMEET_API_BASE_URL=$LETSMEET_API_BASE_URL
 ENV NEXT_PUBLIC_LETSMEET_BASE_URL=$NEXT_PUBLIC_LETSMEET_BASE_URL

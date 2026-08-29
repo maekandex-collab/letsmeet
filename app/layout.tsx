@@ -8,7 +8,7 @@ import FloatingCallBar from "@/components/FloatingCallBar";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  "https://letsmeet-sand.vercel.app";
+  "https://www.letsmeet.date";
 
 const title = "LetsMeet — Match, Chat, Love!";
 const description =

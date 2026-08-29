@@ -315,7 +315,11 @@ export function normalizeMediaInput(path?: string | null): string | null {
     }
     if (working.startsWith("http://") || working.startsWith("https://")) {
       const u = new URL(working);
-      if (u.hostname === "letsmeet.com.ng" || u.hostname === "mtn.lenhub.net") {
+      if (
+        u.hostname === "letsmeet.com.ng" ||
+        u.hostname === "mtn.lenhub.net" ||
+        u.hostname === "mtnstaging.lenhub.net"
+      ) {
         working = u.pathname + u.search;
       }
     }

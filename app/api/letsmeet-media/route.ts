@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { mediaUpstreamUrls, normalizeMediaInput } from "@/lib/letsmeet";
 import { loadCachedMedia, storeCachedMedia } from "@/lib/media-cache-server";
 
-const ALLOWED_MEDIA_HOSTS = new Set(["letsmeet.com.ng", "mtn.lenhub.net"]);
+const ALLOWED_MEDIA_HOSTS = new Set([
+  "letsmeet.com.ng",
+  "mtn.lenhub.net",
+  "mtnstaging.lenhub.net",
+]);
 
 function resolveFetchTargets(rawUrl: string): { cacheKey: string; targets: string[] } {
   const cleanPath = normalizeMediaInput(rawUrl);
