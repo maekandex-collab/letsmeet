@@ -24,7 +24,6 @@ export default function SignInPage() {
     try {
       const login = await loginUser(number, pin);
       const result = interpretLoginResponse(login);
-      console.log("result", result)
 
       if (!result.ok) {
         setError(result.message);

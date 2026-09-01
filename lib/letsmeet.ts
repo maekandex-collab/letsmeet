@@ -1580,7 +1580,10 @@ export function persistLoginSession(
 
 export interface ProfileCard {
   id: number;
-  user_id: string; // hashed id — for GET /single/user/profile only
+  /** Hashed / opaque id for GET /single/user/profile. */
+  user_id: string;
+  /** Numeric id for POST /swipe (feed `user_id` or `swipe_user_id`). */
+  swipe_user_id?: string;
   name: string;
   location: string;
   age: number;
@@ -1611,6 +1614,58 @@ export function resolveCardDisplayName(raw: Record<string, unknown>): string {
   return combined || "User";
 }
 
+/** Swipe target from feed — long numeric legacy id or opaque hash `user_id`. */
+function resolveSwipeUserId(raw: Record<string, unknown>): string {
+  for (const key of ["swipe_user_id", "swipe_id", "target_user_id"]) {
+    const value = raw[key];
+    if (value == null) continue;
+    if (typeof value === "string") {
+      const text = value.trim();
+      if (/^\d{8,}$/.test(text)) return text;
+      continue;
+    }
+    if (typeof value === "number" && Number.isSafeInteger(value)) {
+      const text = String(value);
+      if (/^\d{8,}$/.test(text)) return text;
+    }
+  }
+
+  const uid = raw.user_id;
+  if (typeof uid === "string") {
+    const text = uid.trim();
+    if (!text) return "";
+    if (/^\d{8,}$/.test(text)) return text;
+    // Opaque hash `user_id` from current feed responses.
+    if (text.length >= 8) return text;
+  }
+  if (typeof uid === "number" && Number.isSafeInteger(uid)) {
+    const text = String(uid);
+    if (/^\d{8,}$/.test(text)) return text;
+  }
+
+  return "";
+}
+
+/** Opaque profile id for GET /single/user/profile (not always numeric). */
+function resolveProfileUserId(
+  raw: Record<string, unknown>,
+  swipeUserId: string
+): string {
+  for (const key of ["user_hash", "hashed_user_id", "profile_id", "uuid"]) {
+    const value = raw[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+
+  const uid = raw.user_id;
+  if (typeof uid === "string" && uid.trim()) {
+    const text = uid.trim();
+    if (!/^\d+$/.test(text)) return text;
+    if (text !== swipeUserId) return text;
+  }
+
+  return swipeUserId || (uid != null ? String(uid).trim() : "");
+}
+
 /** Map varying backend field names onto ProfileCard. */
 export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard {
   const photo =
@@ -1620,7 +1675,8 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
     null;
 
   const idRaw = raw.id ?? raw.match_id;
-  const userRaw = raw.user_id ?? raw.swipe_user_id ?? raw.id;
+  const swipeUserId = resolveSwipeUserId(raw);
+  const profileUserId = resolveProfileUserId(raw, swipeUserId);
   const matchRaw = raw.match_id ?? raw.id;
 
   const chatroomRaw = raw.chatroom_id ?? raw.room_id;
@@ -1637,7 +1693,8 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
 
   return {
     id: typeof idRaw === "number" ? idRaw : Number(idRaw) || 0,
-    user_id: userRaw != null ? String(userRaw) : "",
+    user_id: profileUserId,
+    swipe_user_id: swipeUserId || undefined,
     name: resolveCardDisplayName(raw),
     location: String(raw.location ?? ""),
     age: typeof raw.age === "number" ? raw.age : Number(raw.age) || 0,
@@ -2299,9 +2356,34 @@ export function analyzeMatchCompatibility(body: {
   });
 }
 
-/** @deprecated Use analyzeMatchCompatibility — AI is for match comparison, not bios. */
+/** Build onboarding bio prompt for POST /ai. */
+export function buildAboutMeAiContent(input: {
+  interests?: string[];
+  orientation?: string[];
+  notes?: string;
+}): string {
+  const parts = [
+    input.notes?.trim() || "",
+    input.interests?.length ? `Interests: ${input.interests.join(", ")}` : "",
+    input.orientation?.length ? `Attraction: ${input.orientation.join(", ")}` : "",
+    "Write a warm, genuine dating bio for me in first person.",
+  ].filter(Boolean);
+  return parts.join(". ");
+}
+
+/**
+ * Onboarding bio helper — `POST /ai` with `{ username, content }`.
+ * (Same endpoint as match comparison; content drives the response shape.)
+ */
 export function generateAboutMeAi(body: { username: string; content: string }) {
-  return analyzeMatchCompatibility(body);
+  return request<unknown>("/ai", {
+    method: "POST",
+    body: {
+      username: body.username.trim(),
+      content: body.content.trim(),
+    },
+    auth: true,
+  });
 }
 
 /** Build the comparison payload content from two profiles. */
@@ -2616,22 +2698,34 @@ export async function fetchMediaBlob(path?: string | null): Promise<Blob | null>
 }
 
 export function swipe(userId: string, type: "like" | "pass") {
+  const targetId = userId.trim();
+  if (!targetId) {
+    return Promise.resolve({
+      ok: false,
+      status: 400,
+      data: { message: "Missing swipe target user_id." } as SwipeResponse,
+    });
+  }
   return request<SwipeResponse>("/swipe", {
     method: "POST",
-    body: { user_id: userId, swipe_type: type },
+    body: { user_id: targetId, swipe_type: type },
     auth: true,
   });
 }
 
 /**
  * `user_id` for POST /swipe.
- * Feed cards: long numeric string on `user_id` (e.g. "8099448551").
- * Like-list cards: short numeric `id` when `user_id` is a hash.
+ * Legacy feeds: long numeric on `user_id`. Current feed: 32-char hash on `user_id`.
  */
 export function swipeTargetId(card: ProfileCard): string {
+  const swipeId = card.swipe_user_id?.trim();
+  if (swipeId) return swipeId;
+
   const uid = card.user_id?.trim();
-  if (uid && /^\d+$/.test(uid)) return uid;
-  return String(card.id);
+  if (uid) return uid;
+
+  if (card.id > 0) return String(card.id);
+  return "";
 }
 
 /** Numeric `id` for POST /like (liked-you list). */

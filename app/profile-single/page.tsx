@@ -77,7 +77,11 @@ function ProfileContent() {
       const swipeId =
         source === "likes"
           ? profileNumericId({ id: Number(numericId) } as ProfileCard)
-          : swipeTargetId({ id: Number(numericId) || 0, user_id: hashId || numericId } as ProfileCard);
+          : swipeTargetId({
+              id: Number(numericId) || 0,
+              user_id: hashId || "",
+              swipe_user_id: numericId || undefined,
+            } as ProfileCard);
       const res =
         source === "likes"
           ? await likeBack({ id: Number(numericId), user_id: hashId } as ProfileCard)
@@ -104,7 +108,8 @@ function ProfileContent() {
     try {
       const swipeId = swipeTargetId({
         id: Number(numericId) || 0,
-        user_id: hashId || numericId,
+        user_id: hashId || "",
+        swipe_user_id: numericId || undefined,
       } as ProfileCard);
       const res =
         source === "likes"
@@ -218,15 +223,15 @@ function ProfileContent() {
             <ProfilePhoto photo={photo} alt={profile?.name ?? "Profile photo"} priority />
           ) : (
             <div className="absolute inset-0 bg-primary-light flex items-center justify-center">
-              <svg width="80" height="80" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="8" r="4" stroke="#F759F5" strokeWidth="2" />
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="4" stroke="#F759F5" strokeWidth="2" />
                 <path
                   d="M4 20C4 17.79 7.58 16 12 16C16.42 16 20 17.79 20 20"
                   stroke="#F759F5"
                   strokeWidth="2"
                   strokeLinecap="round"
                 />
-              </svg>
+            </svg>
             </div>
           )}
 
@@ -260,37 +265,37 @@ function ProfileContent() {
         {profile && !loading && (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              {[
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {[
                 { label: "Gender", value: profile.gender || "—" },
                 { label: "Orientation", value: profile.sexual_orientation || "—" },
                 { label: "Religion", value: profile.religion || "—" },
-              ].map((s) => (
-                <div key={s.label} className="rounded-2xl border border-border bg-white p-3 text-center">
+          ].map((s) => (
+            <div key={s.label} className="rounded-2xl border border-border bg-white p-3 text-center">
                   <p className="text-sm font-bold text-dark capitalize truncate">{s.value}</p>
-                  <p className="text-xs text-muted mt-0.5">{s.label}</p>
-                </div>
-              ))}
+              <p className="text-xs text-muted mt-0.5">{s.label}</p>
             </div>
+          ))}
+        </div>
 
             {profile.about_me && (
-              <div className="mb-6">
-                <h3 className="text-base font-bold text-dark mb-2">About Me</h3>
+        <div className="mb-6">
+          <h3 className="text-base font-bold text-dark mb-2">About Me</h3>
                 <p className="text-sm text-muted leading-6">{profile.about_me}</p>
-              </div>
+        </div>
             )}
 
             {interests.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-base font-bold text-dark mb-3">Interests</h3>
-                <div className="flex flex-wrap gap-2">
-                  {interests.map((i) => (
-                    <span key={i} className="px-4 py-2 rounded-full border-2 border-primary bg-primary-light text-primary text-sm font-semibold">
-                      {i}
-                    </span>
-                  ))}
-                </div>
-              </div>
+        <div className="mb-6">
+          <h3 className="text-base font-bold text-dark mb-3">Interests</h3>
+          <div className="flex flex-wrap gap-2">
+            {interests.map((i) => (
+              <span key={i} className="px-4 py-2 rounded-full border-2 border-primary bg-primary-light text-primary text-sm font-semibold">
+                {i}
+              </span>
+            ))}
+          </div>
+        </div>
             )}
 
             <div className="mb-6 rounded-3xl border border-border bg-[#FAFAFA] p-4">
@@ -325,20 +330,20 @@ function ProfileContent() {
 
       {/* Actions */}
       {numericId && (
-        <div className="bottom-bar flex gap-4">
+      <div className="bottom-bar flex gap-4">
           <button
             onClick={handlePass}
             disabled={acting}
             className="w-14 h-14 rounded-full border-2 border-border bg-white shadow-card flex items-center justify-center hover:border-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6L6 18M6 6L18 18" stroke="#F75959" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6L18 18" stroke="#F75959" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </button>
           <button onClick={handleLike} disabled={acting} className="flex-1 btn-primary disabled:opacity-50">
-            Like ❤️
+          Like ❤️
           </button>
-        </div>
+      </div>
       )}
     </div>
   );

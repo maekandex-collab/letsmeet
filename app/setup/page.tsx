@@ -2,6 +2,13 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { saveDraft, compressImage } from "@/lib/profileDraft";
+import {
+  buildAboutMeAiContent,
+  extractError,
+  generateAboutMeAi,
+  getUser,
+  normalizeAiAboutMe,
+} from "@/lib/letsmeet";
 
 const ORIENTATIONS = ["Straight", "Asexual", "Others"];
 const INTERESTS = [
@@ -50,6 +57,8 @@ export default function SetupPage() {
   const [interests, setInterests] = useState<string[]>([]);
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null]);
   const [bio, setBio] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const bioWords = countWords(bio);
   const bioReady = bioWords >= MIN_BIO_WORDS;
@@ -90,6 +99,40 @@ export default function SetupPage() {
       });
     };
     reader.readAsDataURL(file);
+  }
+
+  async function handleWriteWithAi() {
+    if (aiLoading) return;
+    setAiError("");
+    setAiLoading(true);
+    try {
+      const user = getUser();
+      const username =
+        user?.fullName?.trim() ||
+        user?.phone?.trim() ||
+        "LetsMeet user";
+      const content = buildAboutMeAiContent({
+        notes: bio.trim() || undefined,
+        interests,
+        orientation,
+      });
+
+      const res = await generateAboutMeAi({ username, content });
+      if (!res.ok) {
+        setAiError(extractError(res.data, "Could not generate bio. Try again."));
+        return;
+      }
+      const generated = normalizeAiAboutMe(res.data);
+      if (!generated) {
+        setAiError("AI returned an empty bio. Add a few notes and try again.");
+        return;
+      }
+      setBio(generated.slice(0, MAX_BIO_CHARS));
+    } catch {
+      setAiError("Network error. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   function next() {
@@ -257,7 +300,17 @@ export default function SetupPage() {
 
         {step === 3 && (
           <>
-            <h1 className="screen-title mb-1">About Me</h1>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h1 className="screen-title">About Me</h1>
+              <button
+                type="button"
+                onClick={() => void handleWriteWithAi()}
+                disabled={aiLoading}
+                className="shrink-0 mt-1 px-3 py-1.5 rounded-full border-2 border-primary text-primary text-xs font-bold disabled:opacity-50"
+              >
+                {aiLoading ? "Writing…" : "Write with AI"}
+              </button>
+            </div>
             <p className="screen-subtitle mb-6">
               Required — write at least {MIN_BIO_WORDS} words ({bioWords}/{MIN_BIO_WORDS})
             </p>
@@ -273,9 +326,13 @@ export default function SetupPage() {
                 {bio.length}/{MAX_BIO_CHARS}
               </span>
             </div>
-            <p className="text-sm text-muted mt-3 leading-5">
-              A great bio gets 3× more matches. Be yourself — write something genuine!
-            </p>
+            {aiError ? (
+              <p className="text-sm text-rose-600 mt-3">{aiError}</p>
+            ) : (
+              <p className="text-sm text-muted mt-3 leading-5">
+                Tip a few notes in the box, then tap Write with AI — or write it yourself. Be genuine!
+              </p>
+            )}
           </>
         )}
       </div>

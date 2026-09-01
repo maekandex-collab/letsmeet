@@ -8,7 +8,7 @@ import ProfilePhoto from "@/components/ProfilePhoto";
 import DiscoverEmptyState from "@/components/DiscoverEmptyState";
 import InlineNotice from "@/components/InlineNotice";
 import {
-  swipeProfile,
+  swipe,
   prefetchMedia,
   isLoggedIn,
   readFeedSnapshot,
@@ -143,13 +143,26 @@ export default function HomePage() {
     resetDrag();
 
     const type = dir === "right" ? "like" : "pass";
+    const targetId = swipeTargetId(card);
+
+    if (!targetId) {
+      setSwipeError(
+        "This profile is missing a swipe id from the feed. Pull down to refresh Discover."
+      );
+      setDirection(null);
+      setAnimating(false);
+      return;
+    }
 
     try {
-      const res = await swipeProfile(card, type);
-      const targetId = swipeTargetId(card);
+      const res = await swipe(targetId, type);
 
       if (!res.ok) {
-        setSwipeError(extractError(res.data, "Could not save your swipe. Try again."));
+        const message = extractError(res.data, "Could not save your swipe. Try again.");
+        setSwipeError(message);
+        if (message.toLowerCase().includes("does not exist")) {
+          clearFeedSnapshot();
+        }
         setDirection(null);
         setAnimating(false);
         return;
@@ -267,7 +280,7 @@ export default function HomePage() {
   const stampOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
 
   return (
-    <div className="mobile-shell flex flex-col overflow-hidden" style={{ height: "100dvh" }}>
+    <div className="mobile-shell flex flex-col min-h-dvh max-h-dvh overflow-hidden">
       <LogoHeader
         right={
           <div className="flex items-center gap-2">
@@ -296,8 +309,8 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex flex-col flex-1 min-h-0 px-3 sm:px-4 pt-header pb-bottom-nav">
-        <div className="flex items-center justify-between mb-2 sm:mb-3 shrink-0 animate-fade-up">
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 pt-header pb-3">
+        <div className="flex items-center justify-between mb-2 shrink-0 animate-fade-up">
           <div>
             <p className="section-kicker mb-1">Discover</p>
             <h2 className="text-2xl font-bold text-dark leading-none">People near you</h2>
@@ -311,19 +324,19 @@ export default function HomePage() {
         </div>
 
         {feedError && (
-          <InlineNotice kicker="Discover">
+          <InlineNotice kicker="Discover" className="shrink-0">
             {feedError}
           </InlineNotice>
         )}
 
         {swipeError && (
-          <InlineNotice tone="error" kicker="Swipe">
+          <InlineNotice tone="error" kicker="Swipe" className="shrink-0">
             {swipeError}
           </InlineNotice>
         )}
 
         <div
-          className="relative mx-auto w-full max-w-[430px] flex-1 min-h-[200px] max-h-[min(520px,52dvh)] shrink overflow-hidden touch-none"
+          className="relative mx-auto w-full max-w-[430px] flex-1 min-h-[220px] max-h-[min(460px,42dvh)] shrink-0 overflow-hidden touch-none"
           style={{ touchAction: "none" }}
         >
           {loading && (
@@ -491,31 +504,33 @@ export default function HomePage() {
         </div>
 
         {!loading && cards.length > 0 && (
-          <div className="flex items-center justify-center gap-8 mt-2 sm:mt-4 shrink-0 pb-1">
-            <button
-              type="button"
-              onClick={() => handleSwipe("left")}
-              disabled={animating}
-              aria-label="Pass"
-              className="w-14 h-14 rounded-full border border-red-100 bg-white shadow-card flex items-center justify-center pressable disabled:opacity-60"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M18 6L6 18M6 6L18 18" stroke="#F75959" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-            </button>
+          <div className="sticky bottom-0 z-10 -mx-3 sm:-mx-4 px-3 sm:px-4 pt-3 pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom,0px)+0.35rem)] bg-gradient-to-t from-white via-white/95 to-white/70">
+            <div className="flex items-center justify-center gap-8">
+              <button
+                type="button"
+                onClick={() => handleSwipe("left")}
+                disabled={animating}
+                aria-label="Pass"
+                className="w-14 h-14 rounded-full border border-red-100 bg-white shadow-card flex items-center justify-center pressable disabled:opacity-60"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6L18 18" stroke="#F75959" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => handleSwipe("right")}
-              disabled={animating}
-              aria-label="Like"
-              className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-primary to-[#d946ef] flex items-center justify-center pressable disabled:opacity-60"
-              style={{ boxShadow: "0 12px 28px rgba(247,89,245,0.42)" }}
-            >
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="white" />
-              </svg>
-            </button>
+              <button
+                type="button"
+                onClick={() => handleSwipe("right")}
+                disabled={animating}
+                aria-label="Like"
+                className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-primary to-[#d946ef] flex items-center justify-center pressable disabled:opacity-60"
+                style={{ boxShadow: "0 12px 28px rgba(247,89,245,0.42)" }}
+              >
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="white" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </div>
