@@ -423,7 +423,7 @@ export default function AccountPage() {
         gender,
         interests: interests.trim() || "General",
         about_me: aboutMe.trim() || "Hello!",
-        location: location.trim() || undefined,
+        location: location.trim(),
         show_location: true,
         profile_image: mainBlob,
         image1: image1Blob,
