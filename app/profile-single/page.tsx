@@ -8,7 +8,8 @@ import {
   likeBack,
   profileNumericId,
   swipe,
-  markSwipedTarget,
+  markSwipedCard,
+  isBenignSwipeReplayResponse,
   swipeTargetId,
   prefetchMedia,
   analyzeMatchCompatibility,
@@ -74,22 +75,23 @@ function ProfileContent() {
     if (!numericId || acting) return;
     setActing(true);
     try {
+      const card = {
+        id: Number(numericId) || 0,
+        user_id: hashId || "",
+        swipe_user_id: numericId || undefined,
+      } as ProfileCard;
       const swipeId =
         source === "likes"
           ? profileNumericId({ id: Number(numericId) } as ProfileCard)
-          : swipeTargetId({
-              id: Number(numericId) || 0,
-              user_id: hashId || "",
-              swipe_user_id: numericId || undefined,
-            } as ProfileCard);
+          : swipeTargetId(card);
       const res =
         source === "likes"
           ? await likeBack({ id: Number(numericId), user_id: hashId } as ProfileCard)
           : await swipe(swipeId, "like");
-      if (source !== "likes" && res.ok) {
-        markSwipedTarget(swipeId);
+      if (source !== "likes" && isBenignSwipeReplayResponse(res)) {
+        markSwipedCard(card);
       }
-      if (!res.ok) {
+      if (!res.ok && !isBenignSwipeReplayResponse(res)) {
         setError(extractError(res.data, "Could not save your like."));
         return;
       }
@@ -106,17 +108,18 @@ function ProfileContent() {
     if (!numericId || acting) return;
     setActing(true);
     try {
-      const swipeId = swipeTargetId({
+      const card = {
         id: Number(numericId) || 0,
         user_id: hashId || "",
         swipe_user_id: numericId || undefined,
-      } as ProfileCard);
+      } as ProfileCard;
+      const swipeId = swipeTargetId(card);
       const res =
         source === "likes"
           ? await swipe(profileNumericId({ id: Number(numericId) } as ProfileCard), "pass")
           : await swipe(swipeId, "pass");
-      if (source !== "likes" && res.ok) {
-        markSwipedTarget(swipeId);
+      if (source !== "likes" && isBenignSwipeReplayResponse(res)) {
+        markSwipedCard(card);
       }
       router.back();
     } catch {

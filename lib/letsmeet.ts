@@ -227,9 +227,12 @@ export function resetDiscoverFilters(): void {
 /** Full discover reset — call on sign-up / logout only (not routine sign-in). */
 export function resetDiscoverLocalState(): void {
   clearFeedSnapshot();
+  invalidateSwipedHydrateCache();
   if (typeof window === "undefined") return;
   try {
+    const uid = getUser()?.userId;
     localStorage.removeItem(swipedStorageKey());
+    if (uid) localStorage.removeItem(`lm_swiped_v2_${uid}`);
     localStorage.removeItem(SWIPED_KEY);
     localStorage.setItem(
       "lm_discover_prefs",
@@ -1540,6 +1543,8 @@ export function persistLoginSession(
   const priorCache = getLoginProfileCache();
   const phoneExtras = getProfileExtrasForPhone(sessionPhone);
   const fromLogin = loginProfileCacheFromResponse(loginData);
+  void ensureSwipedTargetsHydrated({ fresh: true });
+
   if (fromLogin || priorCache || phoneExtras) {
     storeLoginProfileCache({
       profile_image: fromLogin?.profile_image ?? priorCache?.profile_image ?? null,
@@ -2057,6 +2062,8 @@ export async function syncProfileCompletedFromBackend(): Promise<boolean> {
 
 /** Load discover feed — age filters only (religion filter disabled until backend supports it). */
 export async function fetchDiscoverFeed(): Promise<DiscoverFeedResult> {
+  await ensureSwipedTargetsHydrated();
+
   const prefs = sanitizeDiscoverPrefs();
   if (prefs.religion) {
     storeDiscoverPreferences({ ...prefs, religion: "" });
@@ -2744,48 +2751,172 @@ export function likeBack(card: ProfileCard) {
   return likeUser(profileNumericId(card));
 }
 
-// ─── Swiped discover profiles (survives refresh) ───────────────────────────────
+// ─── Swiped discover profiles (local + server hydration) ─────────────────────
 
 const SWIPED_KEY = "lm_swiped_targets";
+const SWIPED_HYDRATE_TTL_MS = 30_000;
+const SWIPED_HISTORY_ENDPOINTS = [
+  "/swipe/list",
+  "/swipe/history",
+  "/liked/list",
+  "/my-likes",
+] as const;
+
+let swipedHydrateAt = 0;
+let swipedHydrateInflight: Promise<void> | null = null;
 
 function swipedStorageKey(): string {
+  const phone = normalizePhone(getUser()?.phone ?? "");
+  if (phone.length >= 12) return `lm_swiped_phone_${phone}`;
   const uid = getUser()?.userId;
   return uid ? `lm_swiped_v2_${uid}` : SWIPED_KEY;
 }
 
-export function getSwipedTargetIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
+function readSwipedTargetList(): string[] {
+  if (typeof window === "undefined") return [];
   try {
     const key = swipedStorageKey();
-    let raw = localStorage.getItem(key);
-    if (!raw && key !== SWIPED_KEY) {
-      raw = localStorage.getItem(SWIPED_KEY);
-      if (raw) {
-        localStorage.setItem(key, raw);
-        localStorage.removeItem(SWIPED_KEY);
+    const keys = [key];
+    const uid = getUser()?.userId;
+    if (uid) keys.push(`lm_swiped_v2_${uid}`);
+    keys.push(SWIPED_KEY);
+
+    for (const storageKey of keys) {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) continue;
+      const list = JSON.parse(raw) as string[];
+      if (!Array.isArray(list)) continue;
+      if (storageKey !== key) {
+        localStorage.setItem(key, JSON.stringify(list));
+        if (storageKey === SWIPED_KEY) localStorage.removeItem(SWIPED_KEY);
       }
+      return list.filter((id) => typeof id === "string" && id.trim());
     }
-    const list = raw ? (JSON.parse(raw) as string[]) : [];
-    return new Set(list);
+    return [];
   } catch {
-    return new Set();
+    return [];
+  }
+}
+
+export function getSwipedTargetIds(): Set<string> {
+  return new Set(readSwipedTargetList());
+}
+
+/** All swipe/profile ids for a card — feed may use hash or numeric interchangeably. */
+export function collectCardTargetIds(
+  card: Pick<ProfileCard, "id" | "user_id" | "swipe_user_id">
+): string[] {
+  const ids = new Set<string>();
+  const push = (value?: string | number | null) => {
+    if (value == null) return;
+    const text = String(value).trim();
+    if (text) ids.add(text);
+  };
+  push(card.swipe_user_id);
+  push(card.user_id);
+  if (card.id > 0) push(String(card.id));
+  return Array.from(ids);
+}
+
+export function mergeSwipedTargets(targetIds: string[]): void {
+  if (typeof window === "undefined" || targetIds.length === 0) return;
+  const set = getSwipedTargetIds();
+  let changed = false;
+  for (const id of targetIds) {
+    const text = id.trim();
+    if (!text || set.has(text)) continue;
+    set.add(text);
+    changed = true;
+  }
+  if (changed) {
+    localStorage.setItem(swipedStorageKey(), JSON.stringify(Array.from(set)));
+    invalidateSwipedHydrateCache();
   }
 }
 
 export function markSwipedTarget(targetId: string): void {
-  if (typeof window === "undefined" || !targetId.trim()) return;
-  const set = getSwipedTargetIds();
-  set.add(targetId.trim());
-  localStorage.setItem(swipedStorageKey(), JSON.stringify(Array.from(set)));
+  mergeSwipedTargets([targetId]);
 }
 
 export function markSwipedCard(card: ProfileCard): void {
-  markSwipedTarget(swipeTargetId(card));
+  mergeSwipedTargets(collectCardTargetIds(card));
 }
 
 export function filterSwipedCards(cards: ProfileCard[]): ProfileCard[] {
   const seen = getSwipedTargetIds();
-  return cards.filter((c) => !seen.has(swipeTargetId(c)));
+  return cards.filter((card) => {
+    const ids = collectCardTargetIds(card);
+    return ids.length === 0 || !ids.some((id) => seen.has(id));
+  });
+}
+
+export function invalidateSwipedHydrateCache(): void {
+  swipedHydrateAt = 0;
+  swipedHydrateInflight = null;
+}
+
+/** True when the server already recorded this swipe (safe to hide locally). */
+export function isBenignSwipeReplayResponse(res: {
+  ok: boolean;
+  data?: SwipeResponse | null;
+}): boolean {
+  if (res.ok) return true;
+  const msg = extractError(res.data, "").toLowerCase();
+  return (
+    msg.includes("already") ||
+    msg.includes("processed") ||
+    msg.includes("swiped") ||
+    msg.includes("duplicate")
+  );
+}
+
+async function hydrateSwipedTargetsFromServer(): Promise<void> {
+  const ids = new Set<string>();
+
+  try {
+    const matches = await fetchMatchedListCached();
+    for (const card of matches) {
+      for (const id of collectCardTargetIds(card)) ids.add(id);
+    }
+  } catch {
+    // ignore — local swipe cache still applies
+  }
+
+  for (const path of SWIPED_HISTORY_ENDPOINTS) {
+    try {
+      const res = await request<unknown>(path, { auth: true });
+      if (!res.ok || res.status === 404 || !res.data) continue;
+      for (const card of parseProfileCards(res.data)) {
+        for (const id of collectCardTargetIds(card)) ids.add(id);
+      }
+    } catch {
+      // optional backend routes — ignore
+    }
+  }
+
+  if (ids.size > 0) mergeSwipedTargets(Array.from(ids));
+}
+
+/** Merge server-side swipe/match history into the local hide list (cross-device). */
+export async function ensureSwipedTargetsHydrated(opts?: {
+  fresh?: boolean;
+}): Promise<void> {
+  if (typeof window === "undefined" || !isLoggedIn()) return;
+  if (opts?.fresh) invalidateSwipedHydrateCache();
+
+  const now = Date.now();
+  if (!opts?.fresh && now - swipedHydrateAt < SWIPED_HYDRATE_TTL_MS) return;
+  if (swipedHydrateInflight) return swipedHydrateInflight;
+
+  swipedHydrateInflight = hydrateSwipedTargetsFromServer()
+    .then(() => {
+      swipedHydrateAt = Date.now();
+    })
+    .finally(() => {
+      swipedHydrateInflight = null;
+    });
+
+  return swipedHydrateInflight;
 }
 
 export function likeUser(userId: string) {

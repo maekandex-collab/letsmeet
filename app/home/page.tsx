@@ -13,7 +13,8 @@ import {
   isLoggedIn,
   readFeedSnapshot,
   writeFeedSnapshot,
-  markSwipedTarget,
+  markSwipedCard,
+  isBenignSwipeReplayResponse,
   swipeTargetId,
   extractError,
   clearFeedSnapshot,
@@ -157,7 +158,7 @@ export default function HomePage() {
     try {
       const res = await swipe(targetId, type);
 
-      if (!res.ok) {
+      if (!res.ok && !isBenignSwipeReplayResponse(res)) {
         const message = extractError(res.data, "Could not save your swipe. Try again.");
         setSwipeError(message);
         if (message.toLowerCase().includes("does not exist")) {
@@ -168,7 +169,7 @@ export default function HomePage() {
         return;
       }
 
-      markSwipedTarget(targetId);
+      markSwipedCard(card);
 
       if (dir === "right" && res.ok && res.data?.matched) {
         const roomId = extractRoomIdFromMatchResponse(res.data);
