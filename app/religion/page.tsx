@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import { getDraft, saveDraft } from "@/lib/profileDraft";
+import { NIGERIA_STATES } from "@/lib/nigeriaStates";
 import { storeDiscoverPreferences, loadDiscoverPreferences } from "@/lib/letsmeet";
 
 const RELIGIONS = [
@@ -32,14 +33,17 @@ export default function ReligionPage() {
   const router = useRouter();
   const [religion, setReligion] = useState("");
   const [occupation, setOccupation] = useState("");
+  const [location, setLocation] = useState("");
 
   useEffect(() => {
     const draft = getDraft();
     if (draft.religion) setReligion(draft.religion);
     if (draft.occupation) setOccupation(draft.occupation);
+    if (draft.location) setLocation(draft.location);
   }, []);
 
-  const canContinue = religion !== "" && occupation.trim() !== "";
+  const canContinue =
+    religion !== "" && occupation.trim() !== "" && location !== "";
 
   function clearDiscoverReligionFilter() {
     const prefs = loadDiscoverPreferences();
@@ -51,6 +55,7 @@ export default function ReligionPage() {
     saveDraft({
       religion,
       occupation: occupation.trim(),
+      location,
       show_location: true,
     });
     clearDiscoverReligionFilter();
@@ -72,8 +77,7 @@ export default function ReligionPage() {
           </div>
           <h1 className="screen-title mb-1 text-center">A little more about you</h1>
           <p className="text-sm text-muted text-center max-w-xs leading-5">
-            Religion and occupation help us suggest more compatible matches. Your location stays on
-            for nearby discovery.
+            Religion, occupation, and your state help us suggest better matches nearby.
           </p>
         </div>
 
@@ -134,6 +138,41 @@ export default function ReligionPage() {
           }
         />
 
+        <div className="input-group mt-4">
+          <label htmlFor="location" className="input-label">
+            State *
+          </label>
+          <div className="input-wrapper">
+            <select
+              id="location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              required
+              className="input-field appearance-none cursor-pointer pl-4 pr-10"
+            >
+              <option value="" disabled>
+                Select your state
+              </option>
+              {NIGERIA_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M6 9L12 15L18 9"
+                  stroke="#616568"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+          </div>
+        </div>
+
         {canContinue && (
           <div className="mt-5 flex items-center gap-3 bg-primary-light rounded-2xl px-4 py-3">
             <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
@@ -141,7 +180,9 @@ export default function ReligionPage() {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-dark">{religion}</p>
-              <p className="text-xs text-muted truncate">{occupation.trim()}</p>
+              <p className="text-xs text-muted truncate">
+                {occupation.trim()} · {location}
+              </p>
             </div>
           </div>
         )}

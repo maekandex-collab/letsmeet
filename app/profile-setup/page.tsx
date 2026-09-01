@@ -124,6 +124,13 @@ export default function ProfileSetupPage() {
     const mainBlob = photos[0] ? dataUrlToBlob(photos[0]) : null;
     if (!mainBlob) return setError("Please add a profile photo.");
 
+    const stateLocation = draft.location?.trim();
+    if (!stateLocation) {
+      setError("Please select your state before continuing.");
+      router.push("/religion");
+      return;
+    }
+
     const image1 = photos[1] ? dataUrlToBlob(photos[1]) : null;
     const image2 = photos[2] ? dataUrlToBlob(photos[2]) : null;
 
@@ -134,7 +141,7 @@ export default function ProfileSetupPage() {
         gender,
         interests: (draft.interests ?? []).join(", "),
         about_me: draft.about_me ?? "",
-        location: draft.location?.trim() || "Nigeria",
+        location: stateLocation,
         show_location: true,
         religion: draft.religion,
         occupation: draft.occupation,

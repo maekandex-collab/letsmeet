@@ -30,6 +30,7 @@ import {
   clearMediaCache,
 } from "@/lib/letsmeet";
 import { getDraft } from "@/lib/profileDraft";
+import { NIGERIA_STATES } from "@/lib/nigeriaStates";
 
 const SETTINGS = [
   {
@@ -403,6 +404,7 @@ export default function AccountPage() {
     setSuccess("");
     setLocalOnlyNotice("");
     if (!gender) return setError("Please select your gender.");
+    if (!location.trim()) return setError("Please select your state.");
 
     setSaving(true);
     try {
@@ -421,7 +423,7 @@ export default function AccountPage() {
         gender,
         interests: interests.trim() || "General",
         about_me: aboutMe.trim() || "Hello!",
-        location: location.trim() || "Nigeria",
+        location: location.trim() || undefined,
         show_location: true,
         profile_image: mainBlob,
         image1: image1Blob,
@@ -535,7 +537,7 @@ export default function AccountPage() {
                 {name ? name : "My Profile"}
               </h1>
               <p className="text-sm text-muted mt-0.5">
-                Update photos and About Me — other details are view only
+                Update photos, state, and About Me — other details are view only
               </p>
             </div>
 
@@ -658,6 +660,51 @@ export default function AccountPage() {
 
               <p className="text-[11px] text-muted mt-4 text-center">
                 Personal details are set at sign-up and cannot be changed here.
+              </p>
+            </div>
+
+            <div className="bg-white/95 rounded-[28px] shadow-card border border-white p-4 sm:p-5 mt-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h2 className="text-xs font-bold text-dark uppercase tracking-wider">
+                  Location
+                </h2>
+                <span className="text-[10px] font-bold text-accent bg-[#EEEEFF] px-2.5 py-1 rounded-full uppercase tracking-wide">
+                  Editable
+                </span>
+              </div>
+              <label htmlFor="account-location" className="text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5 block">
+                State
+              </label>
+              <div className="relative">
+                <select
+                  id="account-location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full appearance-none rounded-2xl border border-primary/10 bg-[#f8f3fa] px-4 py-3 pr-10 text-sm font-medium text-dark outline-none focus:border-primary focus:bg-white transition-colors cursor-pointer"
+                >
+                  <option value="" disabled>
+                    Select your state
+                  </option>
+                  {NIGERIA_STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M6 9L12 15L18 9"
+                      stroke="#616568"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </div>
+              <p className="text-[11px] text-muted mt-2">
+                Used for nearby matches on Discover. Must match one of the supported Nigerian states.
               </p>
             </div>
 
