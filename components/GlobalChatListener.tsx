@@ -12,6 +12,7 @@ import {
   fetchMatchedListCached,
   isLoggedIn,
   linkMatchRoomIds,
+  openLetsMeetWebSocket,
   resolveNumericRoomId,
   wsChatRoomIdsForMatch,
   type ProfileCard,
@@ -72,7 +73,8 @@ export default function GlobalChatListener() {
 
           if (socketsRef.current.has(roomId)) continue;
 
-          const ws = new WebSocket(chatWsUrl(roomId));
+          const ws = openLetsMeetWebSocket(chatWsUrl(roomId));
+          if (!ws) continue;
           ws.onmessage = (event) => {
             let data: unknown;
             try {

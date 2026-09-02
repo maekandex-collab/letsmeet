@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { chatWsUrl } from "@/lib/letsmeet";
+import { chatWsUrl, openLetsMeetWebSocket } from "@/lib/letsmeet";
 import { parseWsChatMessage, type WsIncomingMessage } from "@/lib/chatWs";
 
 export type { WsIncomingMessage };
@@ -21,7 +21,11 @@ export function useChatSocket(
   useEffect(() => {
     if (roomId == null || Number.isNaN(roomId)) return;
 
-    const ws = new WebSocket(chatWsUrl(roomId));
+    const ws = openLetsMeetWebSocket(chatWsUrl(roomId));
+    if (!ws) {
+      setConnected(false);
+      return;
+    }
     socketRef.current = ws;
 
     ws.onopen = () => setConnected(true);

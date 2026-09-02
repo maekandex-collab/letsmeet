@@ -10,6 +10,7 @@ import {
   callWsUrl,
   fetchMatchedListCached,
   isLoggedIn,
+  openLetsMeetWebSocket,
   stashChatPeer,
   wsCallRoomIdsForMatch,
   type ProfileCard,
@@ -87,7 +88,8 @@ export default function GlobalIncomingCall() {
 
         if (socketsRef.current.has(roomId)) continue;
 
-        const ws = new WebSocket(callWsUrl(roomId));
+        const ws = openLetsMeetWebSocket(callWsUrl(roomId));
+        if (!ws) continue;
         ws.onmessage = (event) => {
           let data: { type?: string; offer?: RTCSessionDescriptionInit; audioOnly?: boolean };
           try {

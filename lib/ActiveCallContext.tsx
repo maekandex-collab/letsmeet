@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { callWsUrl, getVideoAudio, resolveCallRoomId } from "@/lib/letsmeet";
+import { callWsUrl, getVideoAudio, openLetsMeetWebSocket, resolveCallRoomId } from "@/lib/letsmeet";
 import {
   clearCallAccepted,
   isCallAccepted,
@@ -392,7 +392,11 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
         socketRef.current = null;
       }
 
-      const ws = new WebSocket(callWsUrl(id));
+      const ws = openLetsMeetWebSocket(callWsUrl(id));
+      if (!ws) {
+        setStatus("Could not connect (secure WebSocket required)");
+        return;
+      }
       socketRef.current = ws;
 
       ws.onopen = () => {

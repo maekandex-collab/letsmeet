@@ -20,7 +20,45 @@ export function getLetsMeetWsOrigin(): string {
     process.env.NEXT_PUBLIC_LETSMEET_BASE_URL ??
     API_BASE;
   const url = new URL(raw.replace(/\/$/, "") || "https://mtn.lenhub.net");
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const pageIsHttps =
+    typeof window !== "undefined" && window.location.protocol === "https:";
+  // IMPORTANT: `wss:` must stay `wss:` — the old check only handled `https:`
+  // and rewrote env values like `wss://mtn.lenhub.net` into `ws://`, which
+  // browsers block on HTTPS pages (mixed content → SecurityError crash).
+  if (
+    url.protocol === "https:" ||
+    url.protocol === "wss:" ||
+    pageIsHttps
+  ) {
+    url.protocol = "wss:";
+  } else {
+    url.protocol = "ws:";
+  }
+  // #region agent log
+  if (typeof window !== "undefined") {
+    fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "49bb0d",
+      },
+      body: JSON.stringify({
+        sessionId: "49bb0d",
+        location: "letsmeet.ts:getLetsMeetWsOrigin",
+        message: "ws origin resolved",
+        data: {
+          raw,
+          pageProtocol:
+            typeof window !== "undefined" ? window.location.protocol : null,
+          origin: url.origin,
+        },
+        timestamp: Date.now(),
+        hypothesisId: "A",
+        runId: "ws-fix",
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
   return url.origin;
 }
 
@@ -32,6 +70,16 @@ export function chatWsUrl(roomId: string | number): string {
 /** WebRTC signaling — `ws(s)://host/ws/call/{roomId}/` */
 export function callWsUrl(roomId: string | number): string {
   return `${getLetsMeetWsOrigin()}/ws/call/${roomId}/`;
+}
+
+/** Open a WebSocket without letting SecurityError crash the React tree. */
+export function openLetsMeetWebSocket(url: string): WebSocket | null {
+  try {
+    return new WebSocket(url);
+  } catch (err) {
+    console.error("WebSocket open failed:", url, err);
+    return null;
+  }
 }
 
 // ─── Session storage ──────────────────────────────────────────────────────────
