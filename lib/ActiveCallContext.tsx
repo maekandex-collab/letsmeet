@@ -394,12 +394,51 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
 
       const ws = openLetsMeetWebSocket(callWsUrl(id));
       if (!ws) {
-        setStatus("Could not connect (secure WebSocket required)");
+        setStatus("Could not open call connection");
         return;
       }
       socketRef.current = ws;
+      let opened = false;
+
+      // #region agent log
+      fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "49bb0d",
+        },
+        body: JSON.stringify({
+          sessionId: "49bb0d",
+          location: "ActiveCallContext.tsx:connectWebSocket",
+          message: "call ws connecting",
+          data: { url: callWsUrl(id), roomId: String(id) },
+          timestamp: Date.now(),
+          hypothesisId: "H",
+          runId: "call-ws-probe",
+        }),
+      }).catch(() => {});
+      // #endregion
 
       ws.onopen = () => {
+        opened = true;
+        // #region agent log
+        fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "49bb0d",
+          },
+          body: JSON.stringify({
+            sessionId: "49bb0d",
+            location: "ActiveCallContext.tsx:onopen",
+            message: "call ws open",
+            data: { roomId: String(id) },
+            timestamp: Date.now(),
+            hypothesisId: "H",
+            runId: "call-ws-probe",
+          }),
+        }).catch(() => {});
+        // #endregion
         if (acceptIncomingRef.current || isCallAccepted(id)) {
           const pending = takePendingCallOffer(id);
           if (pending) {
@@ -410,6 +449,12 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
           setStatus("Joining call…");
         } else {
           setStatus("Ready");
+        }
+      };
+
+      ws.onerror = () => {
+        if (!opened && !inCallRef.current) {
+          setStatus("Call server unreachable");
         }
       };
 
@@ -475,7 +520,36 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        // #region agent log
+        fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "49bb0d",
+          },
+          body: JSON.stringify({
+            sessionId: "49bb0d",
+            location: "ActiveCallContext.tsx:onclose",
+            message: "call ws closed",
+            data: {
+              roomId: String(id),
+              opened,
+              code: event.code,
+              reason: event.reason || "",
+              wasClean: event.wasClean,
+            },
+            timestamp: Date.now(),
+            hypothesisId: "H",
+            runId: "call-ws-probe",
+          }),
+        }).catch(() => {});
+        // #endregion
+        if (!opened && !inCallRef.current) {
+          setStatus("Call server blocked the connection");
+          stopRetry();
+          return;
+        }
         if (inCallRef.current) {
           setStatus("Disconnected");
           endCall();
