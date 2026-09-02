@@ -298,10 +298,10 @@ export default function WelcomeCarousel() {
         <div className="w-full max-w-xs flex flex-col items-center gap-3">
           {isLast ? (
             <Link
-              href="/get-started"
+              href="/sign-in"
               className="w-full py-4 px-8 rounded-2xl bg-white text-[#b5179e] font-bold text-lg text-center shadow-xl hover:shadow-2xl active:scale-[0.98] transition-transform"
             >
-              Create your account
+              Let&apos;s dive in
             </Link>
           ) : (
             <button
@@ -316,13 +316,6 @@ export default function WelcomeCarousel() {
               Continue
             </button>
           )}
-
-          <p className="text-sm text-white/70">
-            Already have an account?{" "}
-            <Link href="/sign-in" className="font-semibold text-white hover:text-[#FFD1FB]">
-              Sign In
-            </Link>
-          </p>
         </div>
       </div>
     </div>

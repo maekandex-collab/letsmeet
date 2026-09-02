@@ -1,11 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import LetsMeetLogo from "@/components/LetsMeetLogo";
-import { loginUser, interpretLoginResponse, persistLoginSession, normalizePhone, clearFeedSnapshot } from "@/lib/letsmeet";
+import {
+  loginUser,
+  interpretLoginResponse,
+  persistLoginSession,
+  normalizePhone,
+  clearFeedSnapshot,
+  hasValidSession,
+} from "@/lib/letsmeet";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -14,11 +21,24 @@ export default function SignInPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Reuse the existing session JWT — do not mint a new token on every visit.
+  useEffect(() => {
+    if (hasValidSession()) {
+      router.replace("/home");
+    }
+  }, [router]);
+
   async function handleSignIn() {
     setError("");
     const number = normalizePhone(phone);
     if (number.length < 12) return setError("Please enter a valid phone number.");
     if (pin.length < 4) return setError("Please enter your PIN.");
+
+    // Already signed in — reuse stored token instead of calling login again.
+    if (hasValidSession()) {
+      router.replace("/home");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -30,8 +50,9 @@ export default function SignInPage() {
         return;
       }
       clearFeedSnapshot();
+      // Persist once; all later requests reuse this JWT from localStorage/cookie.
       persistLoginSession(result.data, number);
-      router.push(result.data?.profile_completed ? "/home" : "/setup"); 
+      router.push(result.data?.profile_completed ? "/home" : "/setup");
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {
@@ -96,11 +117,6 @@ export default function SignInPage() {
         </div>
 
         {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
-
-        <p className="text-sm text-center text-muted">
-          Don&apos;t have an account?{" "}
-          <Link href="/sign-up" className="text-primary font-bold">Sign Up</Link>
-        </p>
       </div>
 
       <div className="bottom-bar">

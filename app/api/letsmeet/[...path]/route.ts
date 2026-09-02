@@ -25,6 +25,18 @@ function buildUpstreamUrl(segments: string[], search: string): string {
   return `${BASE_URL}/api/letsmeet/${joined}${suffix}${search}`;
 }
 
+/** Strip Domain so Set-Cookie applies to this Next host (localhost / letsmeet.date). */
+function rewriteSetCookie(raw: string): string {
+  return raw
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => {
+      const lower = part.toLowerCase();
+      return !lower.startsWith("domain=");
+    })
+    .join("; ");
+}
+
 async function forward(req: NextRequest, segments: string[]) {
   const search = req.nextUrl.search ?? "";
   const target = buildUpstreamUrl(segments, search);
@@ -32,6 +44,10 @@ async function forward(req: NextRequest, segments: string[]) {
   const headers: Record<string, string> = { Accept: "application/json" };
   const auth = req.headers.get("authorization");
   if (auth) headers.Authorization = auth;
+
+  // Forward browser cookies so a single login session can be reused server-side.
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers.Cookie = cookie;
 
   const init: RequestInit = {
     method: req.method,
@@ -56,12 +72,27 @@ async function forward(req: NextRequest, segments: string[]) {
   try {
     const res = await fetch(target, init);
     const text = await res.text();
+    const outHeaders = new Headers({
+      "Content-Type":
+        res.headers.get("content-type") ?? "application/json",
+    });
+
+    // Preserve auth cookies from the backend security patch.
+    const getSetCookie = (
+      res.headers as Headers & { getSetCookie?: () => string[] }
+    ).getSetCookie?.();
+    if (getSetCookie && getSetCookie.length > 0) {
+      for (const c of getSetCookie) {
+        outHeaders.append("Set-Cookie", rewriteSetCookie(c));
+      }
+    } else {
+      const single = res.headers.get("set-cookie");
+      if (single) outHeaders.append("Set-Cookie", rewriteSetCookie(single));
+    }
+
     return new NextResponse(text, {
       status: res.status,
-      headers: {
-        "Content-Type":
-          res.headers.get("content-type") ?? "application/json",
-      },
+      headers: outHeaders,
     });
   } catch {
     return NextResponse.json(

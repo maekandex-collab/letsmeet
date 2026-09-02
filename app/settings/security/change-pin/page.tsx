@@ -5,10 +5,7 @@ import { BackHeader } from "@/components/Header";
 import {
   changePassword,
   extractError,
-  getUser,
   isLoggedIn,
-  loginUser,
-  normalizePhone,
 } from "@/lib/letsmeet";
 
 type Step = "current" | "new" | "confirm";
@@ -89,28 +86,9 @@ export default function ChangePinPage() {
 
   async function advance(pin: string) {
     if (step === "current") {
-      setLoading(true);
-      setError("");
-      try {
-        const phone = normalizePhone(getUser()?.phone ?? "");
-        if (!phone || phone.length < 12) {
-          setError("Could not verify your account. Please sign in again.");
-          setPins((p) => ({ ...p, current: "" }));
-          return;
-        }
-        const res = await loginUser(phone, pin);
-        if (!res.ok) {
-          setError(extractError(res.data, "Current PIN is incorrect."));
-          setPins((p) => ({ ...p, current: "" }));
-          return;
-        }
-        setStep("new");
-      } catch {
-        setError("Network error. Please try again.");
-        setPins((p) => ({ ...p, current: "" }));
-      } finally {
-        setLoading(false);
-      }
+      // Do NOT call login/user here — that would mint a new JWT and invalidate
+      // the single-session token. old_pin is validated by change/password.
+      setStep("new");
       return;
     }
 
@@ -196,7 +174,7 @@ export default function ChangePinPage() {
               <p className="text-sm text-muted mt-2">{config.subtitle}</p>
               {loading && (
                 <p className="text-sm text-primary font-medium mt-3">
-                  {step === "current" ? "Verifying PIN…" : "Updating PIN…"}
+                  Updating PIN…
                 </p>
               )}
             </div>

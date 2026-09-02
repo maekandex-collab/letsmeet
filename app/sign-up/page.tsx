@@ -13,6 +13,7 @@ import {
   persistLoginSession,
   normalizePhone,
   resetDiscoverLocalState,
+  hasValidSession,
 } from "@/lib/letsmeet";
 import { clearDraft, saveDraft } from "@/lib/profileDraft";
 
@@ -31,6 +32,12 @@ function SignUpContent() {
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (hasValidSession()) {
+      router.replace("/home");
+    }
+  }, [router]);
 
   useEffect(() => {
     const digits = phoneFromQuery.replace(/\D/g, "");

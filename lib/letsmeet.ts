@@ -60,11 +60,42 @@ export function openLetsMeetWebSocket(url: string): WebSocket | null {
 // ─── Session storage ──────────────────────────────────────────────────────────
 
 const TOKEN_KEY = "lm_token";
+/** Cookie mirror of the session JWT (backend also may Set-Cookie on login). */
+const TOKEN_COOKIE = "lm_token";
 const USER_KEY = "lm_user";
 const LOGIN_PROFILE_CACHE_KEY = "lm_login_profile_cache";
 /** Survives logout so About Me / interests survive re-login on this device. */
 const PROFILE_EXTRAS_BY_PHONE_KEY = "lm_profile_extras_by_phone";
 const LOCAL_PROFILE_DRAFT_KEY = "lm_local_profile_draft";
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const parts = document.cookie.split("; ");
+  for (const part of parts) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (decodeURIComponent(part.slice(0, eq)) !== name) continue;
+    const value = decodeURIComponent(part.slice(eq + 1));
+    return value || null;
+  }
+  return null;
+}
+
+function writeTokenCookie(token: string): void {
+  if (typeof document === "undefined") return;
+  // 30 days — JWT expiry is still enforced by the API.
+  const maxAge = 60 * 60 * 24 * 30;
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+  document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+}
+
+function clearTokenCookie(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${TOKEN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
 
 export interface SessionUser {
   userId: number;
@@ -180,7 +211,47 @@ export function getStoredHashedUserId(): string | null {
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  try {
+    const fromStorage = window.localStorage.getItem(TOKEN_KEY)?.trim();
+    if (fromStorage) {
+      // Keep cookie in sync so refreshes / proxy can reuse one session.
+      if (!readCookie(TOKEN_COOKIE)) writeTokenCookie(fromStorage);
+      return fromStorage;
+    }
+  } catch {
+    // ignore
+  }
+  // Fallback: cookie mirror (or a Set-Cookie forwarded from login).
+  const fromCookie = readCookie(TOKEN_COOKIE)?.trim() || null;
+  if (fromCookie) {
+    try {
+      window.localStorage.setItem(TOKEN_KEY, fromCookie);
+    } catch {
+      // ignore
+    }
+  }
+  return fromCookie;
+}
+
+/** True when a non-expired session JWT is available (reuse — do not re-login). */
+export function hasValidSession(): boolean {
+  const token = getToken();
+  if (!token || token.length < 10) return false;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return !!token;
+    const jsonStr =
+      typeof window !== "undefined"
+        ? window.atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
+        : Buffer.from(parts[1], "base64").toString("utf-8");
+    const payload = JSON.parse(jsonStr) as { exp?: number };
+    if (typeof payload.exp === "number") {
+      return payload.exp * 1000 > Date.now() + 5_000;
+    }
+  } catch {
+    // Non-JWT or undecodable — still treat as a session if stored.
+  }
+  return true;
 }
 
 export function getUser(): SessionUser | null {
@@ -334,7 +405,11 @@ function resolveMessageFrom(
 
 export function setSession(token: string, user: SessionUser): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(TOKEN_KEY, token);
+  const trimmed = token.trim();
+  if (trimmed) {
+    window.localStorage.setItem(TOKEN_KEY, trimmed);
+    writeTokenCookie(trimmed);
+  }
   window.localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
@@ -348,6 +423,7 @@ export function clearSession(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  clearTokenCookie();
   try {
     window.localStorage.removeItem(HASHED_USER_ID_KEY);
     window.localStorage.removeItem(LOGIN_PROFILE_CACHE_KEY);
@@ -411,7 +487,7 @@ export function storeUserReligion(religion: string): void {
 }
 
 export function isLoggedIn(): boolean {
-  return !!getToken();
+  return hasValidSession();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1298,7 +1374,12 @@ async function request<T = unknown>(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = {
+    method,
+    headers,
+    // Same-origin cookies (Set-Cookie from login via proxy) travel with API calls.
+    credentials: "same-origin",
+  };
 
   if (form) {
     init.body = form;
@@ -1713,7 +1794,10 @@ export function interpretLoginResponse(res: ApiResult<LoginResponse>): Interpret
 
   return {
     ok: false,
-    message: extractError(res.data, "Invalid phone number or PIN."),
+    message: extractError(
+      res.data,
+      "Invalid phone number or PIN. If you already signed in on this device, open the app from Home instead of signing in again."
+    ),
   };
 }
 
@@ -2054,6 +2138,7 @@ export function createUser(body: CreateUserBody) {
   return request("/create/user", { method: "POST", body });
 }
 
+/** Issues a new JWT — call only on explicit sign-in / sign-up, then persist once. */
 export function loginUser(number: string, pin: string) {
   return request<LoginResponse>("/login/user", {
     method: "POST",

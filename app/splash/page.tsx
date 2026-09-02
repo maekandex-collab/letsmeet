@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import WelcomeCarousel from "@/components/WelcomeCarousel";
+import { hasValidSession } from "@/lib/letsmeet";
 
 /**
  * USSD / SMS deep links: /splash?num=2348061583213
@@ -15,6 +16,11 @@ function SplashRedirect() {
   const digits = raw.replace(/\D/g, "");
 
   useEffect(() => {
+    // Already signed in: reuse stored JWT — skip welcome / sign-in.
+    if (digits.length < 10 && hasValidSession()) {
+      router.replace("/home");
+      return;
+    }
     if (digits.length >= 10) {
       router.replace(`/sign-up?num=${encodeURIComponent(digits)}`);
     }
