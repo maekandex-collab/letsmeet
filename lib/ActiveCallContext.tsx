@@ -483,31 +483,7 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
         }
       };
 
-      ws.onclose = (event) => {
-        // #region agent log
-        fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "49bb0d",
-          },
-          body: JSON.stringify({
-            sessionId: "49bb0d",
-            location: "ActiveCallContext.tsx:onclose",
-            message: "call ws closed",
-            data: {
-              roomId: String(id),
-              opened,
-              code: event.code,
-              reason: event.reason || "",
-              wasClean: event.wasClean,
-            },
-            timestamp: Date.now(),
-            hypothesisId: "H",
-            runId: "call-ws-probe",
-          }),
-        }).catch(() => {});
-        // #endregion
+      ws.onclose = () => {
         if (!opened && !inCallRef.current) {
           setStatus("Call server blocked the connection");
           stopRetry();
