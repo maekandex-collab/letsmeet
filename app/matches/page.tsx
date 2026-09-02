@@ -16,6 +16,7 @@ import {
   stashChatPeer,
   buildChatHref,
   linkMatchRoomIds,
+  profileSingleHref,
   extractRoomIdFromMatchResponse,
   parseProfileCards,
   unmatchUser,
@@ -39,7 +40,7 @@ function LikeCard({
       style={{ boxShadow: "0 10px 32px rgba(247,89,245,0.22)" }}
     >
       <Link
-        href={`/profile-single?id=${encodeURIComponent(profile.user_id)}&uid=${profile.id}&source=likes`}
+        href={profileSingleHref(profile, "likes")}
         className="absolute inset-0 block"
       >
         <Avatar photo={profile.profile_photo} name={profile.name} fill priority />
@@ -165,7 +166,7 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<ProfileCard[]>([]);
   const [likes, setLikes] = useState<ProfileCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [likingId, setLikingId] = useState<number | null>(null);
+  const [likingId, setLikingId] = useState<string | null>(null);
   const [unmatchingKey, setUnmatchingKey] = useState<string | null>(null);
   const [likeError, setLikeError] = useState("");
   const [unmatchError, setUnmatchError] = useState("");
@@ -187,7 +188,7 @@ export default function MatchesPage() {
   async function handleLikeBack(profile: ProfileCard) {
     if (likingId != null) return;
     setLikeError("");
-    setLikingId(profile.id);
+    setLikingId(profile.user_id);
 
     try {
       const res = await likeBack(profile);
@@ -196,13 +197,11 @@ export default function MatchesPage() {
         return;
       }
 
+      const chatroomId =
+        res.data.chatroom_id != null ? String(res.data.chatroom_id) : profile.chatroom_id;
       const roomId = extractRoomIdFromMatchResponse(res.data);
       if (roomId != null) {
-        linkMatchRoomIds(roomId, [
-          res.data.chatroom_id,
-          profile.chatroom_id,
-          profile.id,
-        ]);
+        linkMatchRoomIds(roomId, [chatroomId, profile.chatroom_id]);
       }
 
       setLikes((prev) => prev.filter((p) => p.user_id !== profile.user_id));
@@ -211,7 +210,11 @@ export default function MatchesPage() {
       const refreshed = await fetchMatchedListCached({ fresh: true });
       setMatches(refreshed);
 
-      stashChatPeer(profile);
+      stashChatPeer({
+        ...profile,
+        chatroom_id: chatroomId,
+        room_id: roomId ?? profile.room_id,
+      });
 
       router.push("/match-found");
     } catch {
@@ -317,7 +320,7 @@ export default function MatchesPage() {
                   <LikeCard
                     key={profile.user_id}
                     profile={profile}
-                    liking={likingId === profile.id}
+                    liking={likingId === profile.user_id}
                     onLikeBack={() => void handleLikeBack(profile)}
                   />
                 ))}

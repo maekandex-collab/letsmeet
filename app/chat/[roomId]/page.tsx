@@ -7,6 +7,7 @@ import {
   bootstrapChatRoomId,
   parseNumericRoomId,
   readChatPeer,
+  resolveMessageRoomId,
 } from "@/lib/letsmeet";
 
 function ChatRoomRoute() {
@@ -16,6 +17,19 @@ function ChatRoomRoute() {
 
   const isPending = segment === "pending";
   const roomId = isPending ? null : (parseNumericRoomId(segment) ?? segment);
+
+  useEffect(() => {
+    if (isPending || !segment || !/^\d{1,7}$/.test(segment)) return;
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveMessageRoomId(segment);
+      if (cancelled || !resolved || resolved === segment) return;
+      router.replace(`/chat/${resolved}`);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [segment, isPending, router]);
 
   useEffect(() => {
     if (!isPending) return;

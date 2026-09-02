@@ -11,7 +11,7 @@ import {
   fetchMatchedListCached,
   isLoggedIn,
   stashChatPeer,
-  wsChatRoomIdsForMatch,
+  wsCallRoomIdsForMatch,
   type ProfileCard,
 } from "@/lib/letsmeet";
 
@@ -43,12 +43,22 @@ export default function GlobalIncomingCall() {
   incomingRef.current = incoming;
 
   const handleRing = useCallback((roomId: string, offer?: RTCSessionDescriptionInit, audioOnly?: boolean) => {
-    if (offer) stashPendingCallOffer(roomId, offer);
-
     const match = matchByRoomRef.current.get(roomId);
     if (!match) return;
 
-    if (pathnameRef.current.startsWith(`/video-call/${roomId}`)) return;
+    if (offer) {
+      for (const alias of callRoomIdsForMatch(match)) {
+        stashPendingCallOffer(alias, offer);
+      }
+    }
+
+    if (
+      callRoomIdsForMatch(match).some((rid) =>
+        pathnameRef.current.startsWith(`/video-call/${rid}`)
+      )
+    ) {
+      return;
+    }
 
     const current = incomingRef.current;
     if (current?.roomId === roomId) return;
@@ -70,7 +80,7 @@ export default function GlobalIncomingCall() {
     const nextRooms = new Set<string>();
 
     for (const match of matches) {
-      const roomIds = wsChatRoomIdsForMatch(match);
+      const roomIds = wsCallRoomIdsForMatch(match);
       for (const roomId of roomIds) {
         nextRooms.add(roomId);
         matchByRoomRef.current.set(roomId, match);
@@ -147,7 +157,9 @@ export default function GlobalIncomingCall() {
   const accept = useCallback(() => {
     if (!incoming) return;
     stashChatPeer(incoming.match);
-    markCallAccepted(incoming.roomId);
+    for (const rid of callRoomIdsForMatch(incoming.match)) {
+      markCallAccepted(rid);
+    }
     const audioParam = incoming.audioOnly ? "&audio=1" : "";
     const href = `${buildVideoCallHref(incoming.roomId)}?accept=1${audioParam}`;
     setIncoming(null);

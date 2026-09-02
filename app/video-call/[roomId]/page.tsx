@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useActiveCall } from "@/lib/ActiveCallContext";
 import {
@@ -10,6 +10,7 @@ import {
   parseNumericRoomId,
   peerMatchesRoom,
   readChatPeer,
+  resolveCallRoomId,
 } from "@/lib/letsmeet";
 import Avatar from "@/components/Avatar";
 import IncomingCallOverlay from "@/components/IncomingCallOverlay";
@@ -24,9 +25,14 @@ const CALL_LIMIT_NOTICE = "Calls are limited to 5–10 minutes.";
 
 function VideoCallContent() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const segment = String(params.roomId ?? "").trim();
-  const roomId = segment ? (parseNumericRoomId(segment) ?? segment) : null;
+  const [roomId, setRoomId] = useState<string | null>(
+    segment
+      ? String(parseNumericRoomId(segment) ?? segment)
+      : null
+  );
   const acceptIncoming = searchParams.get("accept") === "1";
   const audioOnlyParam = searchParams.get("audio") === "1";
 
@@ -55,6 +61,25 @@ function VideoCallContent() {
     toggleMute,
     toggleCamera,
   } = useActiveCall();
+
+  useEffect(() => {
+    if (!segment) return;
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveCallRoomId(segment);
+      if (cancelled) return;
+      const next = resolved ?? String(parseNumericRoomId(segment) ?? segment);
+      setRoomId(next);
+      const qs = searchParams.toString();
+      const suffix = qs ? `?${qs}` : "";
+      if (resolved && resolved !== segment) {
+        router.replace(`/video-call/${resolved}${suffix}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [segment, router, searchParams]);
 
   // Resolve peer name/photo
   useEffect(() => {

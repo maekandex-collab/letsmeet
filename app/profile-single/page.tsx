@@ -6,11 +6,10 @@ import ProfilePhoto from "@/components/ProfilePhoto";
 import {
   getSingleProfile,
   likeBack,
-  profileNumericId,
   swipe,
+  swipeTargetId,
   markSwipedCard,
   isBenignSwipeReplayResponse,
-  swipeTargetId,
   prefetchMedia,
   analyzeMatchCompatibility,
   buildMatchComparisonContent,
@@ -72,22 +71,18 @@ function ProfileContent() {
   }, [hashId]);
 
   async function handleLike() {
-    if (!numericId || acting) return;
+    if (!hashId || acting) return;
     setActing(true);
     try {
       const card = {
-        id: Number(numericId) || 0,
-        user_id: hashId || "",
-        swipe_user_id: numericId || undefined,
+        id: 0,
+        user_id: hashId,
+        swipe_user_id: numericId || hashId || undefined,
       } as ProfileCard;
-      const swipeId =
-        source === "likes"
-          ? profileNumericId({ id: Number(numericId) } as ProfileCard)
-          : swipeTargetId(card);
       const res =
         source === "likes"
-          ? await likeBack({ id: Number(numericId), user_id: hashId } as ProfileCard)
-          : await swipe(swipeId, "like");
+          ? await likeBack(card)
+          : await swipe(swipeTargetId(card), "like");
       if (source !== "likes" && isBenignSwipeReplayResponse(res)) {
         markSwipedCard(card);
       }
@@ -105,19 +100,15 @@ function ProfileContent() {
   }
 
   async function handlePass() {
-    if (!numericId || acting) return;
+    if (!hashId || acting) return;
     setActing(true);
     try {
       const card = {
-        id: Number(numericId) || 0,
-        user_id: hashId || "",
-        swipe_user_id: numericId || undefined,
+        id: 0,
+        user_id: hashId,
+        swipe_user_id: numericId || hashId || undefined,
       } as ProfileCard;
-      const swipeId = swipeTargetId(card);
-      const res =
-        source === "likes"
-          ? await swipe(profileNumericId({ id: Number(numericId) } as ProfileCard), "pass")
-          : await swipe(swipeId, "pass");
+      const res = await swipe(swipeTargetId(card), "pass");
       if (source !== "likes" && isBenignSwipeReplayResponse(res)) {
         markSwipedCard(card);
       }

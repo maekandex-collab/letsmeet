@@ -54,16 +54,61 @@ export interface SessionUser {
 
 const HASHED_USER_ID_KEY = "lm_hashed_user_id";
 
+/** Max length for opaque profile / swipe ids from the LetsMeet API. */
+export const OPAQUE_USER_ID_MAX_LEN = 50;
+
+/** True for hashed profile ids or long numeric swipe ids (not JWT internal ids). */
+export function isOpaqueUserId(value: string | null | undefined): boolean {
+  const text = (value ?? "").trim();
+  if (!text || text.length > OPAQUE_USER_ID_MAX_LEN) return false;
+  if (/^\d+$/.test(text)) return text.length >= 8;
+  return true;
+}
+
+/** Valid API target for swipe/like/profile — rejects internal list row ids (1, 2, 3…). */
+export function isApiUserId(value: string | null | undefined): boolean {
+  const text = (value ?? "").trim();
+  if (!text || !isOpaqueUserId(text)) return false;
+  if (/^\d{1,7}$/.test(text)) return false;
+  return true;
+}
+
+function pickApiUserId(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    const text = value?.trim();
+    if (text && isApiUserId(text)) return text;
+  }
+  return "";
+}
+
+/** 32-char hex profile id — not a chat room id (WS/REST reject it). */
+export function isBareProfileHash(value: string | null | undefined): boolean {
+  const text = (value ?? "").trim();
+  return /^[0-9a-f]{32}$/i.test(text);
+}
+
+/** Profile detail URL — always passes hash `id` + swipe `uid`, never list row `id`. */
+export function profileSingleHref(
+  card: Pick<ProfileCard, "user_id" | "swipe_user_id">,
+  source = "discover"
+): string {
+  const profileId = pickApiUserId(card.user_id, card.swipe_user_id);
+  if (!profileId) return "/profile-single";
+  const swipeId = pickApiUserId(card.swipe_user_id, card.user_id) || profileId;
+  const q = new URLSearchParams({ id: profileId, uid: swipeId, source });
+  return `/profile-single?${q}`;
+}
+
 /** Profile lookup id for PUT /single/user/profile (hash or numeric user_id). */
 export function extractHashedUserId(data: unknown): string | null {
   if (!data || typeof data !== "object") return null;
   const obj = data as Record<string, unknown>;
   for (const key of ["hashed_user_id", "profile_user_id", "uuid", "user_hash"]) {
     const v = obj[key];
-    if (typeof v === "string" && v.length >= 8 && !/^\d{1,6}$/.test(v)) return v;
+    if (typeof v === "string" && isOpaqueUserId(v) && !/^\d+$/.test(v)) return v.trim();
   }
   const uid = obj.user_id;
-  if (typeof uid === "string" && uid.length >= 8 && !/^\d+$/.test(uid)) return uid;
+  if (typeof uid === "string" && isOpaqueUserId(uid) && !/^\d+$/.test(uid)) return uid.trim();
   return null;
 }
 
@@ -155,6 +200,68 @@ export function getUserId(): string | null {
   return user?.userId ? String(user.userId) : null;
 }
 
+const OWN_SENDER_KEY = "lm_own_sender_ids";
+
+function chatOwnerScopeKey(): string {
+  const hash = getUser()?.hashedUserId?.trim() || getStoredHashedUserId()?.trim();
+  if (hash && !/^\d{1,6}$/.test(hash)) return hash;
+  const jwt = getNumericUserId();
+  if (jwt != null && jwt > 0) return `u${jwt}`;
+  const uid = getUser()?.userId;
+  if (uid != null && uid > 0) return `u${uid}`;
+  const phone = normalizePhone(getUser()?.phone ?? "");
+  return phone || "anon";
+}
+
+function ownSenderStorageKey(): string {
+  return `${OWN_SENDER_KEY}_${chatOwnerScopeKey()}`;
+}
+
+/** Remember ids the API uses for our outbound chat messages (hash or JWT id). */
+export function rememberOwnSenderId(senderId: string | number | null | undefined): void {
+  if (typeof window === "undefined" || senderId == null) return;
+  const text = String(senderId).trim();
+  if (!text) return;
+  try {
+    const raw = localStorage.getItem(ownSenderStorageKey());
+    let list: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+    const isNumeric = /^\d{1,7}$/.test(text);
+    if (isNumeric) {
+      // One internal numeric sender id per account — never store both "1" and "2".
+      list = list.filter((id) => !/^\d{1,7}$/.test(id));
+    }
+    if (!list.includes(text)) list.push(text);
+    localStorage.setItem(ownSenderStorageKey(), JSON.stringify(list.slice(-24)));
+  } catch {
+    // ignore
+  }
+  if (/^[0-9a-f]{32}$/i.test(text) && !/^\d{1,6}$/.test(text)) {
+    storeHashedUserId(text);
+    updateUser({ hashedUserId: text });
+  }
+}
+
+function readOwnSenderIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(ownSenderStorageKey());
+    const list = raw ? (JSON.parse(raw) as string[]) : [];
+    if (!Array.isArray(list)) return [];
+    const cleaned = list.filter((id) => typeof id === "string" && id.trim());
+    const hashes = cleaned.filter((id) => /^[0-9a-f]{32}$/i.test(id));
+    const numerics = cleaned.filter((id) => /^\d{1,7}$/.test(id));
+    if (numerics.length > 1) {
+      // Self-heal corrupted state where both chat participants' numeric ids were stored.
+      const healed = [...hashes];
+      localStorage.setItem(ownSenderStorageKey(), JSON.stringify(healed));
+      return healed;
+    }
+    return cleaned;
+  } catch {
+    return [];
+  }
+}
+
 /** True when `sender_id` from chat API / WebSocket belongs to the signed-in user. */
 export function isOwnSenderId(senderId: number | string | null | undefined): boolean {
   if (senderId == null) return false;
@@ -166,6 +273,9 @@ export function isOwnSenderId(senderId: number | string | null | undefined): boo
   if (user?.userId != null) candidates.add(String(user.userId));
   const numeric = getNumericUserId();
   if (numeric != null) candidates.add(String(numeric));
+  const hash = user?.hashedUserId?.trim() || getStoredHashedUserId();
+  if (hash) candidates.add(hash);
+  for (const id of readOwnSenderIds()) candidates.add(id);
   if (user?.phone) {
     const digits = user.phone.replace(/\D/g, "");
     if (digits) {
@@ -175,6 +285,28 @@ export function isOwnSenderId(senderId: number | string | null | undefined): boo
     }
   }
   return candidates.has(s);
+}
+
+function resolveMessageFrom(
+  senderId: unknown,
+  peerUserId: string | null,
+  flags: { is_mine?: boolean; is_sender?: boolean }
+): "me" | "them" {
+  if (flags.is_mine === true || flags.is_sender === true) return "me";
+  if (flags.is_mine === false || flags.is_sender === false) return "them";
+  if (isOwnSenderId(senderId as string | number)) return "me";
+  const senderKey =
+    senderId != null && String(senderId).trim() ? String(senderId).trim() : "";
+  const peerKey = peerUserId?.trim() || "";
+  if (peerKey && senderKey === peerKey) return "them";
+  if (senderKey && /^\d{1,7}$/.test(senderKey)) {
+    const ownNumerics = readOwnSenderIds().filter((id) => /^\d{1,7}$/.test(id));
+    if (ownNumerics.length === 1) {
+      return senderKey === ownNumerics[0] ? "me" : "them";
+    }
+    return "them";
+  }
+  return "them";
 }
 
 export function setSession(token: string, user: SessionUser): void {
@@ -633,11 +765,12 @@ export function extractRoomIdFromMatchResponse(data: {
   chatroom_id?: string | number | null;
   match_id?: number | string | null;
 }): number | null {
+  const fromChatroom = parseNumericRoomId(data.chatroom_id);
+  if (fromChatroom != null) return fromChatroom;
   const fromRoom = parseNumericRoomId(data.room_id);
   if (fromRoom != null) return fromRoom;
-  const fromMatch = parseNumericRoomId(data.match_id);
-  if (fromMatch != null) return fromMatch;
-  return parseNumericRoomId(data.chatroom_id);
+  // `match_id` is the list-row id for unmatch — not a chat room id.
+  return null;
 }
 
 /** Persist aliases (chatroom key, match card id) → numeric room_id. */
@@ -658,14 +791,23 @@ export function linkMatchRoomIds(
 export function resolveNumericRoomId(
   card: Pick<ProfileCard, "room_id" | "chatroom_id" | "id">
 ): number | null {
-  if (card.room_id != null && Number.isFinite(card.room_id)) return card.room_id;
+  if (card.room_id != null && Number.isFinite(card.room_id)) {
+    if (card.id > 0 && card.room_id === card.id) return null;
+    return card.room_id;
+  }
   const fromChatroom = card.chatroom_id
     ? parseNumericRoomId(card.chatroom_id)
     : null;
-  if (fromChatroom != null) return fromChatroom;
+  if (fromChatroom != null) {
+    if (card.id > 0 && fromChatroom === card.id) return null;
+    return fromChatroom;
+  }
   if (card.chatroom_id) {
     const stashed = getStashedChatRoomId(card.chatroom_id);
-    if (stashed != null) return stashed;
+    if (stashed != null) {
+      if (card.id > 0 && stashed === card.id) return null;
+      return stashed;
+    }
   }
   return null;
 }
@@ -737,7 +879,6 @@ export function stashChatPeer(card: ProfileCard): void {
   }
   if (roomId != null) stashChatPhoto(roomId, photo);
   stashChatPhoto(card.user_id, photo);
-  stashChatPhoto(card.id, photo);
 }
 
 export function readChatPeer(): ChatPeerContext | null {
@@ -767,6 +908,7 @@ export function peerMatchesRoom(
   if (!raw) return false;
   if (peer.chatroomId && peer.chatroomId.trim() === raw) return true;
   if (peer.roomId != null && String(peer.roomId) === raw) return true;
+  if (peer.userId && peer.userId.trim() === raw) return true;
   return false;
 }
 
@@ -794,31 +936,38 @@ export function buildAudioCallHref(roomId: number | string): string {
   return `/video-call/${roomId}?audio=1`;
 }
 
-/** Chat URL — prefer chatroom UUID (matches REST + WebSocket). */
+/** Resolve chat/call signaling room id (chatroom hash preferred). */
+export async function resolveCallRoomId(
+  roomId: string | number
+): Promise<string | null> {
+  return resolveMessageRoomId(roomId);
+}
+
+/** Chat URL — uses API `chatroom_id` (often the peer's profile hash). */
 export function buildChatHref(card: ProfileCard): string {
   const chatroom = card.chatroom_id?.trim();
   if (chatroom) return `/chat/${chatroom}`;
-  const roomId = resolveNumericRoomId(card);
-  return roomId != null ? `/chat/${roomId}` : "/chat/pending";
+  const numeric = resolveNumericRoomId(card);
+  if (numeric != null) return `/chat/${numeric}`;
+  return "/chat/pending";
 }
 
-/** Stable inbox / storage key — must match chatroom UUID used by the API. */
+/** Stable inbox / storage key — matches API `chatroom_id`. */
 export function chatRoomKey(card: ProfileCard): string {
   const chatroom = card.chatroom_id?.trim();
   if (chatroom) return chatroom;
   const numeric = resolveNumericRoomId(card);
   if (numeric != null) return String(numeric);
-  return String(card.id);
+  return "";
 }
 
-/** All WebSocket room ids for a match (numeric + chatroom UUID). */
+/** All call/signaling room ids for a match (chatroom hash + numeric room). */
 export function callRoomIdsForMatch(card: ProfileCard): string[] {
   const ids = new Set<string>();
-  const numeric = resolveNumericRoomId(card);
-  if (numeric != null) ids.add(String(numeric));
   const chatroom = card.chatroom_id?.trim();
   if (chatroom) ids.add(chatroom);
-  if (ids.size === 0) ids.add(String(card.id));
+  const numeric = resolveNumericRoomId(card);
+  if (numeric != null) ids.add(String(numeric));
   return Array.from(ids);
 }
 
@@ -833,7 +982,9 @@ export function isValidWsChatRoomId(roomId: string): boolean {
     if (s.length >= 10) return false;
     return Number(s) > 0;
   }
-  return s.length >= 8;
+  // Backend chatroom_id is often a 32-char profile hash.
+  if (/^[0-9a-f]{32}$/i.test(s)) return true;
+  return false;
 }
 
 export function wsChatRoomIdsForMatch(card: ProfileCard): string[] {
@@ -844,6 +995,11 @@ export function wsChatRoomIdsForMatch(card: ProfileCard): string[] {
     return [String(numeric)];
   }
   return [];
+}
+
+/** All valid WS room ids for call signaling listeners (hash + numeric aliases). */
+export function wsCallRoomIdsForMatch(card: ProfileCard): string[] {
+  return callRoomIdsForMatch(card).filter((id) => isValidWsChatRoomId(id));
 }
 
 // ─── Chat history (API + local fallback) ─────────────────────────────────────
@@ -862,7 +1018,7 @@ const CHAT_MSG_PREFIX = "lm_chat_msgs_";
 const CHAT_ROOM_PREFIX = "lm_chat_room_";
 
 function chatMsgKey(roomId: string | number): string {
-  return `${CHAT_MSG_PREFIX}${roomId}`;
+  return `${CHAT_MSG_PREFIX}${chatOwnerScopeKey()}_${roomId}`;
 }
 
 export function loadChatMessages(roomId: string | number): StoredChatMessage[] {
@@ -1002,9 +1158,49 @@ export function mergeChatMessages(
   ...lists: StoredChatMessage[][]
 ): StoredChatMessage[] {
   const map = new Map<number, StoredChatMessage>();
+  const byText = new Map<string, StoredChatMessage>();
+
+  const textKey = (msg: StoredChatMessage) =>
+    `${msg.text}\u0000${Math.floor(msg.at / 5000)}`;
+
   for (const list of lists) {
     for (const msg of list) {
+      const prev = map.get(msg.id);
+      if (
+        prev?.from === "me" &&
+        msg.from === "them" &&
+        prev.text === msg.text &&
+        Math.abs(prev.at - msg.at) < 60_000 &&
+        (prev.delivery === "sent" || prev.delivery === "sending")
+      ) {
+        map.set(msg.id, {
+          ...msg,
+          from: "me",
+          delivery: prev.delivery ?? msg.delivery,
+        });
+        byText.set(textKey(msg), map.get(msg.id)!);
+        continue;
+      }
       map.set(msg.id, msg);
+      const tk = textKey(msg);
+      const prevText = byText.get(tk);
+      if (
+        prevText?.from === "me" &&
+        msg.from === "them" &&
+        prevText.text === msg.text &&
+        (prevText.delivery === "sent" || prevText.delivery === "sending")
+      ) {
+        map.delete(msg.id);
+        map.set(prevText.id, {
+          ...msg,
+          id: prevText.id,
+          from: "me",
+          delivery: prevText.delivery ?? msg.delivery,
+        });
+        byText.set(tk, map.get(prevText.id)!);
+      } else {
+        byText.set(tk, msg);
+      }
     }
   }
   return Array.from(map.values()).sort((a, b) => a.at - b.at);
@@ -1640,8 +1836,8 @@ function resolveSwipeUserId(raw: Record<string, unknown>): string {
     const text = uid.trim();
     if (!text) return "";
     if (/^\d{8,}$/.test(text)) return text;
-    // Opaque hash `user_id` from current feed responses.
-    if (text.length >= 8) return text;
+    // Opaque hash `user_id` from feed / like-list responses.
+    if (isOpaqueUserId(text) && !/^\d+$/.test(text)) return text;
   }
   if (typeof uid === "number" && Number.isSafeInteger(uid)) {
     const text = String(uid);
@@ -1684,19 +1880,25 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
   const profileUserId = resolveProfileUserId(raw, swipeUserId);
   const matchRaw = raw.match_id ?? raw.id;
 
-  const chatroomRaw = raw.chatroom_id ?? raw.room_id;
-  const chatroomId =
+  const chatroomRaw = raw.chatroom_id;
+  let chatroomId =
     typeof chatroomRaw === "string"
-      ? chatroomRaw
+      ? chatroomRaw.trim()
       : typeof chatroomRaw === "number"
         ? String(chatroomRaw)
         : undefined;
 
-  const roomId =
-    parseNumericRoomId(raw.room_id as string | number | null | undefined) ??
-    parseNumericRoomId(chatroomRaw as string | number | null | undefined);
+  const listRowId = typeof idRaw === "number" ? idRaw : Number(idRaw) || 0;
+  let roomId = parseNumericRoomId(raw.room_id as string | number | null | undefined);
+  if (roomId != null && listRowId > 0 && roomId === listRowId) roomId = null;
+  if (roomId == null && chatroomId) {
+    const fromChatroom = parseNumericRoomId(chatroomId);
+    if (fromChatroom != null && (listRowId <= 0 || fromChatroom !== listRowId)) {
+      roomId = fromChatroom;
+    }
+  }
 
-  return {
+  const card: ProfileCard = {
     id: typeof idRaw === "number" ? idRaw : Number(idRaw) || 0,
     user_id: profileUserId,
     swipe_user_id: swipeUserId || undefined,
@@ -1708,6 +1910,7 @@ export function normalizeProfileCard(raw: Record<string, unknown>): ProfileCard 
     room_id: roomId ?? undefined,
     match_id: matchRaw != null && String(matchRaw).trim() ? String(matchRaw) : undefined,
   };
+  return card;
 }
 
 export function parseProfileCards(data: unknown): ProfileCard[] {
@@ -2185,7 +2388,12 @@ export interface ApiChatMessage {
   timestamp?: string;
 }
 
-export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
+export function parseApiChatMessages(
+  data: unknown,
+  opts?: { peerUserId?: string | null; localHint?: StoredChatMessage[] }
+): StoredChatMessage[] {
+  const peerId = opts?.peerUserId?.trim() || null;
+  const localHint = opts?.localHint ?? [];
   const list = Array.isArray(data)
     ? data
     : data && typeof data === "object"
@@ -2196,7 +2404,25 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
 
   if (!Array.isArray(list)) return [];
 
-  return list
+  // Learn our numeric sender id only from server message ids we sent (never by text match).
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const m = raw as ApiChatMessage;
+    const msgId = m.id ?? m.message_id;
+    const senderId = m.sender_id ?? m.user_id;
+    if (msgId == null || senderId == null) continue;
+    const idNum = Number(msgId);
+    if (!Number.isFinite(idNum)) continue;
+    const local = localHint.find(
+      (h) =>
+        h.from === "me" &&
+        h.id === idNum &&
+        (h.delivery === "sent" || h.delivery === "sending")
+    );
+    if (local) rememberOwnSenderId(senderId);
+  }
+
+  const parsed = list
     .map((raw, index) => {
       if (!raw || typeof raw !== "object") return null;
       const m = raw as ApiChatMessage;
@@ -2204,17 +2430,14 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
       if (!text.trim()) return null;
 
       const senderId = m.sender_id ?? m.user_id;
-      const from: StoredChatMessage["from"] =
-        m.is_mine === true || m.is_sender === true
-          ? "me"
-          : m.is_mine === false || m.is_sender === false
-            ? "them"
-            : isOwnSenderId(senderId)
-              ? "me"
-              : "them";
+      const from = resolveMessageFrom(senderId, peerId, {
+        is_mine: m.is_mine,
+        is_sender: m.is_sender,
+      });
 
       const atRaw = m.created_at ?? m.timestamp;
       const at = atRaw ? new Date(atRaw).getTime() : Date.now() + index;
+
       const time = Number.isFinite(at)
         ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         : nowTimeLabel();
@@ -2234,18 +2457,110 @@ export function parseApiChatMessages(data: unknown): StoredChatMessage[] {
     })
     .filter((m): m is StoredChatMessage => m != null)
     .sort((a, b) => a.at - b.at);
+
+  return parsed;
 }
 
 function nowTimeLabel(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+export async function resolveMessageRoomId(
+  roomId: string | number
+): Promise<string | null> {
+  const match = await findMatchByRoomId(roomId);
+
+  const chatroom = match?.chatroom_id?.trim();
+  if (chatroom) {
+    return chatroom;
+  }
+
+  const peer = readChatPeer();
+  if (peerMatchesRoom(peer, roomId) && peer?.chatroomId?.trim()) {
+    return peer.chatroomId.trim();
+  }
+
+  const numeric = match ? resolveNumericRoomId(match) : null;
+  if (numeric != null) {
+    return String(numeric);
+  }
+
+  const fromStash = resolveApiRoomId(roomId);
+  if (fromStash != null && (!match || fromStash !== match.id)) {
+    return String(fromStash);
+  }
+
+  const raw = String(roomId).trim();
+  if (!raw) return null;
+  if (match && raw === String(match.id)) return null;
+  if (/^[0-9a-f-]{36}$/i.test(raw)) return raw;
+  if (/^[0-9a-f]{32}$/i.test(raw)) return raw;
+  if (raw.includes("-") && !/^\d+$/.test(raw)) return raw;
+
+  return null;
+}
+
 export function getMessageList(roomId: number | string, page = 1) {
-  const apiRoomId = chatroomIdForApi(roomId) ?? String(roomId).trim();
-  return request<unknown>(
-    `/message/room/${encodeURIComponent(apiRoomId)}?page=${page}`,
-    { auth: true }
-  );
+  return resolveMessageRoomId(roomId).then((apiRoomId) => {
+    if (!apiRoomId) {
+      return {
+        ok: false,
+        status: 400,
+        data: { error: "Chat room not ready." },
+      } as ApiResult<unknown>;
+    }
+    return request<unknown>(
+      `/message/room/${encodeURIComponent(apiRoomId)}?page=${page}`,
+      { auth: true }
+    );
+  });
+}
+
+const MESSAGE_PAGE_SIZE = 20;
+
+function extractRawMessageList(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    const obj = data as { messages?: unknown; items?: unknown };
+    const list = obj.messages ?? obj.items;
+    return Array.isArray(list) ? list : [];
+  }
+  return [];
+}
+
+/** Fetch all message pages — API defaults to ~20 per page. */
+export async function fetchMessageHistory(
+  roomId: number | string,
+  opts?: { peerUserId?: string | null; localHint?: StoredChatMessage[] }
+): Promise<ApiResult<StoredChatMessage[]>> {
+  const allRaw: unknown[] = [];
+  let page = 1;
+  let lastStatus = 200;
+  let hadError = false;
+
+  while (page <= 50) {
+    const res = await getMessageList(roomId, page);
+    if (!res.ok) {
+      if (page === 1) {
+        return res as ApiResult<StoredChatMessage[]>;
+      }
+      hadError = true;
+      break;
+    }
+    lastStatus = res.status;
+    const batch = extractRawMessageList(res.data);
+    if (batch.length === 0) break;
+    allRaw.push(...batch);
+    if (batch.length < MESSAGE_PAGE_SIZE) break;
+    page += 1;
+  }
+
+  const parsed = parseApiChatMessages(allRaw, opts);
+
+  if (hadError && parsed.length === 0) {
+    return { ok: false, status: lastStatus, data: [] };
+  }
+  return { ok: true, status: lastStatus, data: parsed };
 }
 
 /** Mark one notification read — `GET /notification/read?notification_id=` */
@@ -2706,7 +3021,7 @@ export async function fetchMediaBlob(path?: string | null): Promise<Blob | null>
 
 export function swipe(userId: string, type: "like" | "pass") {
   const targetId = userId.trim();
-  if (!targetId) {
+  if (!targetId || !isApiUserId(targetId)) {
     return Promise.resolve({
       ok: false,
       status: 400,
@@ -2725,19 +3040,21 @@ export function swipe(userId: string, type: "like" | "pass") {
  * Legacy feeds: long numeric on `user_id`. Current feed: 32-char hash on `user_id`.
  */
 export function swipeTargetId(card: ProfileCard): string {
-  const swipeId = card.swipe_user_id?.trim();
-  if (swipeId) return swipeId;
-
-  const uid = card.user_id?.trim();
-  if (uid) return uid;
-
-  if (card.id > 0) return String(card.id);
-  return "";
+  return pickApiUserId(card.swipe_user_id, card.user_id);
 }
 
-/** Numeric `id` for POST /like (liked-you list). */
-export function profileNumericId(card: Pick<ProfileCard, "id">): string {
-  return String(card.id);
+/** `user_id` for POST /like (liked-you list). Prefer hash, then long numeric. */
+export function likeTargetId(
+  card: Pick<ProfileCard, "user_id" | "swipe_user_id">
+): string {
+  return pickApiUserId(card.user_id, card.swipe_user_id);
+}
+
+/** @deprecated Use likeTargetId — list row `id` is not the API user id. */
+export function profileNumericId(
+  card: Pick<ProfileCard, "id" | "user_id" | "swipe_user_id">
+): string {
+  return likeTargetId(card);
 }
 
 /** Discover feed — swipe right (like) or left (pass). */
@@ -2748,19 +3065,13 @@ export function swipeProfile(card: ProfileCard, type: "like" | "pass") {
 
 /** “Liked you” — they already liked you; you like back to match. */
 export function likeBack(card: ProfileCard) {
-  return likeUser(profileNumericId(card));
+  return likeUser(likeTargetId(card));
 }
 
 // ─── Swiped discover profiles (local + server hydration) ─────────────────────
 
 const SWIPED_KEY = "lm_swiped_targets";
 const SWIPED_HYDRATE_TTL_MS = 30_000;
-const SWIPED_HISTORY_ENDPOINTS = [
-  "/swipe/list",
-  "/swipe/history",
-  "/liked/list",
-  "/my-likes",
-] as const;
 
 let swipedHydrateAt = 0;
 let swipedHydrateInflight: Promise<void> | null = null;
@@ -2804,17 +3115,15 @@ export function getSwipedTargetIds(): Set<string> {
 
 /** All swipe/profile ids for a card — feed may use hash or numeric interchangeably. */
 export function collectCardTargetIds(
-  card: Pick<ProfileCard, "id" | "user_id" | "swipe_user_id">
+  card: Pick<ProfileCard, "user_id" | "swipe_user_id">
 ): string[] {
   const ids = new Set<string>();
-  const push = (value?: string | number | null) => {
-    if (value == null) return;
-    const text = String(value).trim();
-    if (text) ids.add(text);
+  const push = (value?: string | null) => {
+    const text = value?.trim();
+    if (text && isApiUserId(text)) ids.add(text);
   };
   push(card.swipe_user_id);
   push(card.user_id);
-  if (card.id > 0) push(String(card.id));
   return Array.from(ids);
 }
 
@@ -2882,18 +3191,6 @@ async function hydrateSwipedTargetsFromServer(): Promise<void> {
     // ignore — local swipe cache still applies
   }
 
-  for (const path of SWIPED_HISTORY_ENDPOINTS) {
-    try {
-      const res = await request<unknown>(path, { auth: true });
-      if (!res.ok || res.status === 404 || !res.data) continue;
-      for (const card of parseProfileCards(res.data)) {
-        for (const id of collectCardTargetIds(card)) ids.add(id);
-      }
-    } catch {
-      // optional backend routes — ignore
-    }
-  }
-
   if (ids.size > 0) mergeSwipedTargets(Array.from(ids));
 }
 
@@ -2920,6 +3217,14 @@ export async function ensureSwipedTargetsHydrated(opts?: {
 }
 
 export function likeUser(userId: string) {
+  const targetId = userId.trim();
+  if (!targetId || !isApiUserId(targetId)) {
+    return Promise.resolve({
+      ok: false,
+      status: 400,
+      data: { matched: false, message: "Missing like target user_id." } as LikeResponse,
+    });
+  }
   return request<LikeResponse>("/like", {
     method: "POST",
     body: { user_id: userId },
@@ -2978,15 +3283,10 @@ export async function sendMessage(
   message: string,
   roomId: string | number
 ) {
-  let apiRoomId = chatroomIdForApi(roomId);
+  const match = await findMatchByRoomId(roomId);
+  const apiRoomId = await resolveMessageRoomId(roomId);
 
-  // Only a numeric id is known — look up the chatroom UUID from matches.
-  if (apiRoomId == null || /^\d+$/.test(apiRoomId)) {
-    const match = await findMatchByRoomId(roomId);
-    if (match?.chatroom_id) apiRoomId = String(match.chatroom_id);
-  }
-
-  if (apiRoomId == null) {
+  if (!apiRoomId) {
     return {
       ok: false,
       status: 400,
@@ -2994,7 +3294,7 @@ export async function sendMessage(
     } as ApiResult<SendMessageResponse>;
   }
 
-  return request<SendMessageResponse>("/message/send", {
+  const res = await request<SendMessageResponse>("/message/send", {
     method: "POST",
     body: {
       message,
@@ -3003,6 +3303,10 @@ export async function sendMessage(
     },
     auth: true,
   });
+  if (res.ok && res.data?.sender_id != null) {
+    rememberOwnSenderId(res.data.sender_id);
+  }
+  return res;
 }
 
 export async function getNotificationList(page = 1, pageSize?: number) {

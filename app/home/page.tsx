@@ -16,12 +16,14 @@ import {
   markSwipedCard,
   isBenignSwipeReplayResponse,
   swipeTargetId,
+  profileSingleHref,
   extractError,
   clearFeedSnapshot,
   resetDiscoverFilters,
   fetchDiscoverFeed,
   linkMatchRoomIds,
   extractRoomIdFromMatchResponse,
+  stashChatPeer,
   type ProfileCard,
   type DiscoverEmptyReason,
 } from "@/lib/letsmeet";
@@ -172,10 +174,17 @@ export default function HomePage() {
       markSwipedCard(card);
 
       if (dir === "right" && res.ok && res.data?.matched) {
+        const chatroomId =
+          res.data.chatroom_id != null ? String(res.data.chatroom_id) : card.chatroom_id;
         const roomId = extractRoomIdFromMatchResponse(res.data);
         if (roomId != null) {
-          linkMatchRoomIds(roomId, [res.data.chatroom_id, card.chatroom_id, card.id]);
+          linkMatchRoomIds(roomId, [chatroomId, card.chatroom_id]);
         }
+        stashChatPeer({
+          ...card,
+          chatroom_id: chatroomId,
+          room_id: roomId ?? card.room_id,
+        });
         setCards((prev) => prev.filter((c) => swipeTargetId(c) !== swipeTargetId(card)));
         router.push("/match-found");
         return;
@@ -485,7 +494,7 @@ export default function HomePage() {
                         </div>
                         {isTop && (
                           <Link
-                            href={`/profile-single?id=${encodeURIComponent(card.user_id)}&uid=${encodeURIComponent(swipeTargetId(card))}&source=discover`}
+                            href={profileSingleHref(card, "discover")}
                             className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 pointer-events-auto"
                             onPointerDown={(e) => e.stopPropagation()}
                             aria-label={`View ${card.name}'s profile`}

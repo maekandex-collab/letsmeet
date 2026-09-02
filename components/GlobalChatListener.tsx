@@ -56,7 +56,7 @@ export default function GlobalChatListener() {
         const canonicalKey = chatRoomKey(match);
         const numeric = resolveNumericRoomId(match);
         if (numeric != null) {
-          linkMatchRoomIds(numeric, [match.chatroom_id, canonicalKey, match.id]);
+          linkMatchRoomIds(numeric, [match.chatroom_id, canonicalKey]);
         }
 
         upsertInboxPeer(canonicalKey, {

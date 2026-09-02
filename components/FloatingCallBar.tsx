@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useActiveCall } from "@/lib/ActiveCallContext";
+import { buildAudioCallHref, buildVideoCallHref } from "@/lib/letsmeet";
 
 function formatDuration(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -57,7 +58,9 @@ export default function FloatingCallBar() {
 
   if (!shouldShow) return null;
 
-  const callHref = `/video-call/${roomId}`;
+  const callHref = audioOnly
+    ? buildAudioCallHref(roomId ?? "")
+    : buildVideoCallHref(roomId ?? "");
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[9999] animate-slideDown">

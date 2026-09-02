@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { callWsUrl, getVideoAudio } from "@/lib/letsmeet";
+import { callWsUrl, getVideoAudio, resolveCallRoomId } from "@/lib/letsmeet";
 import {
   clearCallAccepted,
   isCallAccepted,
@@ -483,15 +483,18 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
 
   const startCall = useCallback(
     async (id: string | number, opts?: { audioOnly?: boolean; acceptIncoming?: boolean; peerName?: string; peerPhoto?: string | null }) => {
+      const resolved = (await resolveCallRoomId(id)) ?? String(id).trim();
+      const callRoom = resolved || String(id);
+
       // If there's already an active call to the same room, skip
-      if (inCallRef.current && roomIdRef.current === id) return;
+      if (inCallRef.current && roomIdRef.current === callRoom) return;
       // Any previous session for a *different* room must be fully torn down
       // first — not just when `inCall` is true. A half-started call (ringing,
       // not yet connected) can otherwise leave a stale RTCPeerConnection /
       // WebSocket around, whose cached offer/localDescription then gets
       // reused for the new room (see `sendOffer`), effectively routing the
       // new call through the old session.
-      if (roomIdRef.current !== null && roomIdRef.current !== id) {
+      if (roomIdRef.current !== null && roomIdRef.current !== callRoom) {
         endCall();
       }
 
@@ -499,12 +502,12 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
       audioOnlyRef.current = isAudioOnly;
       acceptIncomingRef.current = opts?.acceptIncoming ?? false;
       setAudioOnly(isAudioOnly);
-      setRoomId(id);
+      setRoomId(callRoom);
       setPeerName(opts?.peerName ?? "");
       setPeerPhoto(opts?.peerPhoto ?? null);
       setStatus("Connecting…");
 
-      connectWebSocket(id);
+      connectWebSocket(callRoom);
 
       // Wait for WS open, then send offer
       await new Promise<void>((resolve) => {

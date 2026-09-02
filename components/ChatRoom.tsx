@@ -8,22 +8,22 @@ import {
   extractError,
   getChatPhoto,
   getSingleProfile,
-  getMessageList,
-  parseApiChatMessages,
+  fetchMessageHistory,
   isOwnSenderId,
+  rememberOwnSenderId,
   normalizeMediaInput,
   prefetchMedia,
   loadChatMessages,
   mergeChatMessages,
   saveChatMessages,
   linkMatchRoomIds,
-  stashChatRoomId,
   readChatPeer,
   peerMatchesRoom,
   findMatchByRoomId,
   buildVideoCallHref,
   buildAudioCallHref,
   resolveNumericRoomId,
+  resolveMessageRoomId,
   unmatchUser,
   matchIdForUnmatch,
   type StoredChatMessage,
@@ -99,6 +99,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   const [peerTyping, setPeerTyping] = useState(false);
   const [peerLoading, setPeerLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [socketRoomId, setSocketRoomId] = useState<string | number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string>("");
@@ -137,15 +138,56 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   useEffect(() => {
     markRoomRead(roomId);
     upsertInboxPeer(roomId, peerMeta());
+  }, [roomId, peerMeta]);
 
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        markRoomRead(roomId);
+  const loadHistory = useCallback(
+    async (cancelled: () => boolean) => {
+      const local = loadChatMessages(storageKey);
+      if (local.length > 0 && !cancelled()) {
+        setMessages(local);
+        syncInboxFromMessages(roomId, local, peerMeta());
+        scrollBottom(false);
       }
+
+      const res = await fetchMessageHistory(roomId, {
+        peerUserId: userId,
+        localHint: local,
+      });
+      if (cancelled()) return;
+      setHistoryLoading(false);
+      if (!res.ok || !res.data) return;
+
+      const fromApi = res.data;
+      const merged = mergeChatMessages(local, fromApi);
+      if (merged.length === 0) return;
+
+      setMessages(merged);
+      saveChatMessages(storageKey, merged);
+      syncInboxFromMessages(roomId, merged, peerMeta());
+      markRoomRead(roomId);
+      scrollBottom(false);
+    },
+    [storageKey, roomId, userId, peerMeta, scrollBottom]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    void loadHistory(isCancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [loadHistory]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      markRoomRead(roomId);
+      void loadHistory(() => false);
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [roomId, peerMeta]);
+  }, [roomId, loadHistory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,6 +246,25 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
   }, [roomId]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveMessageRoomId(roomId);
+      if (cancelled) return;
+      if (resolved) {
+        setSocketRoomId(resolved);
+        if (resolved !== String(roomId) && /^\d{1,7}$/.test(String(roomId))) {
+          router.replace(`/chat/${resolved}`);
+        }
+      } else {
+        setSocketRoomId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, router]);
+
+  useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     (async () => {
@@ -234,51 +295,6 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     setMessages([]);
     setHistoryLoading(true);
   }, [roomId]);
-
-  useEffect(() => {
-    const local = loadChatMessages(storageKey);
-    if (local.length > 0) {
-      setMessages(local);
-      syncInboxFromMessages(roomId, local, peerMeta());
-      scrollBottom(false);
-    }
-
-    let cancelled = false;
-    (async () => {
-      const res = await getMessageList(roomId);
-      if (cancelled) return;
-      setHistoryLoading(false);
-
-      if (!res.ok) return;
-
-      if (res.data && typeof res.data === "object") {
-        const rawObj = res.data as Record<string, unknown>;
-        const items = rawObj.items;
-        if (Array.isArray(items) && items.length > 0) {
-          const first = items[0] as Record<string, unknown> | undefined;
-          const dbRoomId = Number(first?.room_id ?? first?.room);
-          if (Number.isFinite(dbRoomId) && dbRoomId > 0) {
-            stashChatRoomId(String(roomId), dbRoomId);
-            linkMatchRoomIds(dbRoomId, [roomId]);
-          }
-        }
-      }
-
-      const fromApi = parseApiChatMessages(res.data);
-      const merged = mergeChatMessages(local, fromApi);
-      if (merged.length === 0) return;
-
-      setMessages(merged);
-      saveChatMessages(storageKey, merged);
-      syncInboxFromMessages(roomId, merged, peerMeta());
-      markRoomRead(roomId);
-      scrollBottom(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [storageKey, roomId, peerMeta, scrollBottom]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -329,7 +345,15 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
     }
   }, []);
 
-  const { connected, sendTyping } = useChatSocket(roomId, onIncoming, onPeerTyping);
+  const { connected, sendTyping } = useChatSocket(socketRoomId, onIncoming, onPeerTyping);
+
+  useEffect(() => {
+    if (connected) return;
+    const timer = setInterval(() => {
+      void loadHistory(() => false);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [connected, loadHistory]);
 
   useEffect(() => {
     if (!connected) return;
@@ -423,6 +447,10 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         return;
       }
 
+      if (res.data?.sender_id != null) {
+        rememberOwnSenderId(res.data.sender_id);
+      }
+
       setMessages((prev) => {
         const next = prev.map((m) =>
           m.id === optimistic.id
@@ -511,7 +539,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         </div>
 
         <Link
-          href={buildAudioCallHref(roomId)}
+          href={buildAudioCallHref(socketRoomId ?? roomId)}
           className="w-9 h-9 rounded-full flex items-center justify-center bg-primary-light hover:bg-primary/20 transition-colors flex-shrink-0"
           title="Audio call"
         >
@@ -526,7 +554,7 @@ export default function ChatRoom({ roomId }: ChatRoomProps) {
         </Link>
 
         <Link
-          href={buildVideoCallHref(roomId)}
+          href={buildVideoCallHref(socketRoomId ?? roomId)}
           className="w-9 h-9 rounded-full flex items-center justify-center bg-primary-light hover:bg-primary/20 transition-colors flex-shrink-0"
           title="Video call"
         >
