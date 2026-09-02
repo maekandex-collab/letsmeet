@@ -288,7 +288,7 @@ function SignUpContent() {
             </Link>{" "}
             &amp;{" "}
             <Link
-              href="/settings/privacy"
+              href="/settings/terms"
               className="text-dark font-semibold underline"
             >
               Terms of Service
