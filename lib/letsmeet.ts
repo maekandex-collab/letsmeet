@@ -34,31 +34,6 @@ export function getLetsMeetWsOrigin(): string {
   } else {
     url.protocol = "ws:";
   }
-  // #region agent log
-  if (typeof window !== "undefined") {
-    fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "49bb0d",
-      },
-      body: JSON.stringify({
-        sessionId: "49bb0d",
-        location: "letsmeet.ts:getLetsMeetWsOrigin",
-        message: "ws origin resolved",
-        data: {
-          raw,
-          pageProtocol:
-            typeof window !== "undefined" ? window.location.protocol : null,
-          origin: url.origin,
-        },
-        timestamp: Date.now(),
-        hypothesisId: "A",
-        runId: "ws-fix",
-      }),
-    }).catch(() => {});
-  }
-  // #endregion
   return url.origin;
 }
 

@@ -400,45 +400,8 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
       socketRef.current = ws;
       let opened = false;
 
-      // #region agent log
-      fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "49bb0d",
-        },
-        body: JSON.stringify({
-          sessionId: "49bb0d",
-          location: "ActiveCallContext.tsx:connectWebSocket",
-          message: "call ws connecting",
-          data: { url: callWsUrl(id), roomId: String(id) },
-          timestamp: Date.now(),
-          hypothesisId: "H",
-          runId: "call-ws-probe",
-        }),
-      }).catch(() => {});
-      // #endregion
-
       ws.onopen = () => {
         opened = true;
-        // #region agent log
-        fetch("http://127.0.0.1:7616/ingest/9fe77331-a7ce-4551-804b-6693f2cfc1bd", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "49bb0d",
-          },
-          body: JSON.stringify({
-            sessionId: "49bb0d",
-            location: "ActiveCallContext.tsx:onopen",
-            message: "call ws open",
-            data: { roomId: String(id) },
-            timestamp: Date.now(),
-            hypothesisId: "H",
-            runId: "call-ws-probe",
-          }),
-        }).catch(() => {});
-        // #endregion
         if (acceptIncomingRef.current || isCallAccepted(id)) {
           const pending = takePendingCallOffer(id);
           if (pending) {
