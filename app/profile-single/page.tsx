@@ -207,7 +207,7 @@ function ProfileContent() {
       {/* Hero photo */}
       <div className="pt-16 px-3 sm:px-4">
         <div
-          className="relative mx-auto w-full max-w-[430px] overflow-hidden rounded-[28px] bg-[#151515]"
+          className="relative mx-auto w-full max-w-[430px] md:max-w-[520px] lg:max-w-[560px] overflow-hidden rounded-[28px] bg-[#151515]"
           style={{
             height: "clamp(380px, 54dvh, 520px)",
             boxShadow: "0 8px 32px rgba(0,0,0,0.14)",
