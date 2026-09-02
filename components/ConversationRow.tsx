@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Avatar from "@/components/Avatar";
-import UnreadBadge from "@/components/UnreadBadge";
 import { formatRelativeTime, type ChatInboxEntry } from "@/lib/chatInbox";
 import { formatGamePreview } from "@/lib/gameChallenge";
 import { buildChatHref, stashChatPeer, type ProfileCard } from "@/lib/letsmeet";
@@ -54,7 +53,6 @@ export default function ConversationRow({ match, inbox }: ConversationRowProps) 
           <p className={`text-sm truncate ${unread > 0 ? "text-dark font-medium" : "text-muted"}`}>
             {lastText}
           </p>
-          <UnreadBadge count={unread} />
         </div>
       </div>
     </Link>

@@ -27,44 +27,34 @@ export default function GameChallengeCard({
     challengeId: payload.challengeId,
   });
 
+  const kicker = payload.kind === "score" ? "Score shared" : fromMe ? "You sent a game" : "Game invite";
+  const cta = payload.kind === "score" ? "Play this game" : fromMe ? "Play now" : "Play now";
+  const blurb =
+    payload.kind === "score"
+      ? `Scored ${payload.score ?? 0}. Beat it on your side.`
+      : game.tagline;
+
   return (
-    <div
-      className={`w-[min(100%,280px)] overflow-hidden rounded-[22px] border shadow-card ${
-        fromMe
-          ? "border-white/20 bg-white/15 text-white"
-          : "border-primary/15 bg-white text-dark"
-      }`}
-    >
-      <div className={`h-16 bg-gradient-to-br ${game.accent} flex items-center justify-center text-3xl`}>
-        {game.emoji}
+    <div className="w-[min(100%,268px)] overflow-hidden rounded-[20px] bg-white text-dark ring-1 ring-black/5 shadow-[0_10px_28px_rgba(18,21,28,0.10)]">
+      <div className={`relative h-[72px] bg-gradient-to-br ${game.accent}`}>
+        <div className="absolute inset-0 bg-black/15" />
+        <div className="relative h-full flex items-end justify-between px-3.5 pb-2.5">
+          <span className="text-[28px] leading-none drop-shadow-sm">{game.emoji}</span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/90">
+            {kicker}
+          </span>
+        </div>
       </div>
-      <div className="px-3.5 py-3">
-        <p className={`text-[10px] font-bold uppercase tracking-wider ${fromMe ? "text-white/70" : "text-primary"}`}>
-          {payload.kind === "score" ? "Score shared" : "Async challenge"}
-        </p>
-        <p className="text-[15px] font-bold mt-0.5">{game.title}</p>
-        {payload.kind === "score" ? (
-          <p className={`text-sm mt-1 ${fromMe ? "text-white/80" : "text-muted"}`}>
-            Scored {payload.score ?? 0} this round. Play on your own, then share yours.
-          </p>
-        ) : (
-          <p className={`text-sm mt-1 ${fromMe ? "text-white/80" : "text-muted"}`}>
-            {game.howTo} Not live multiplayer — each of you plays, then shares a score.
-          </p>
-        )}
+      <div className="px-3.5 pt-3 pb-3.5">
+        <p className="text-[16px] font-extrabold text-dark leading-tight">{game.title}</p>
+        <p className="text-[13px] text-muted mt-1 leading-5">{blurb}</p>
         <Link
           href={playHref}
-          className={`mt-3 flex items-center justify-center h-10 rounded-full text-sm font-bold pressable ${
-            fromMe
-              ? "bg-white text-dark"
-              : "bg-gradient-to-br from-primary to-[#d946ef] text-white"
-          }`}
+          className="mt-3 flex items-center justify-center h-11 rounded-2xl bg-primary text-white text-sm font-bold pressable hover:opacity-90"
         >
-          {payload.kind === "score" ? "Play this game" : fromMe ? "Play now" : "Accept challenge"}
+          {cta}
         </Link>
-        <p className={`mt-2 text-right text-[10px] ${fromMe ? "text-white/60" : "text-muted"}`}>
-          {time}
-        </p>
+        <p className="mt-2 text-right text-[10px] text-muted">{time}</p>
       </div>
     </div>
   );

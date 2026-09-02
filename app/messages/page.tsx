@@ -5,14 +5,13 @@ import { usePathname } from "next/navigation";
 import { LogoHeader } from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ConversationRow, { ConversationRowSkeleton } from "@/components/ConversationRow";
-import UnreadBadge from "@/components/UnreadBadge";
 import {
   getInboxEntry,
   hydrateInboxFromApi,
   pruneInboxToRooms,
   upsertInboxPeer,
 } from "@/lib/chatInbox";
-import { useInboxMap, useTotalUnread } from "@/lib/useInboxUnread";
+import { useInboxMap } from "@/lib/useInboxUnread";
 import {
   fetchMatchedListCached,
   getMessageList,
@@ -37,7 +36,6 @@ export default function MessagesPage() {
   const [query, setQuery] = useState("");
   const [avatarEpoch, setAvatarEpoch] = useState(0);
   const inboxMap = useInboxMap();
-  const totalUnread = useTotalUnread();
 
   const loadMatches = useCallback(async () => {
     const list = await fetchMatchedListCached();
@@ -114,23 +112,13 @@ export default function MessagesPage() {
     [matches, query, inboxMap]
   );
 
-  const totalUnreadDisplay = totalUnread;
-
   return (
     <div className="mobile-shell flex flex-col min-h-dvh">
       <LogoHeader />
       <PageEnter className="flex-1 overflow-y-auto pt-header pb-bottom-nav">
-        <div className="px-5 pt-2 pb-1 flex items-center justify-between">
-          <div>
-            <p className="section-kicker mb-1">Inbox</p>
-            <h1 className="text-2xl font-bold text-dark">Messages</h1>
-            {totalUnreadDisplay > 0 && (
-              <p className="text-sm text-primary font-semibold mt-0.5">
-                {totalUnreadDisplay} unread
-              </p>
-            )}
-          </div>
-          <UnreadBadge count={totalUnreadDisplay} />
+        <div className="px-5 pt-2 pb-1">
+          <p className="section-kicker mb-1">Inbox</p>
+          <h1 className="text-2xl font-bold text-dark">Messages</h1>
         </div>
 
         <div className="px-5 py-3 sticky top-[var(--header-h)] z-10 bg-surface/80 backdrop-blur-xl">
