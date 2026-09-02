@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BackHeader } from "@/components/Header";
 import { InputField } from "@/components/FormFields";
 import LetsMeetLogo from "@/components/LetsMeetLogo";
+import InlineNotice from "@/components/InlineNotice";
 import {
   loginUser,
   interpretLoginResponse,
@@ -14,19 +15,24 @@ import {
   hasValidSession,
 } from "@/lib/letsmeet";
 
-export default function SignInPage() {
+function SignInContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const justRegistered = searchParams.get("registered") === "1";
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showRegisteredBanner, setShowRegisteredBanner] = useState(justRegistered);
 
   // Reuse the existing session JWT — do not mint a new token on every visit.
+  // After registration we clear the session first, so this only applies to normal visits.
   useEffect(() => {
+    if (justRegistered) return;
     if (hasValidSession()) {
       router.replace("/home");
     }
-  }, [router]);
+  }, [router, justRegistered]);
 
   async function handleSignIn() {
     setError("");
@@ -35,7 +41,7 @@ export default function SignInPage() {
     if (pin.length < 4) return setError("Please enter your PIN.");
 
     // Already signed in — reuse stored token instead of calling login again.
-    if (hasValidSession()) {
+    if (!justRegistered && hasValidSession()) {
       router.replace("/home");
       return;
     }
@@ -69,6 +75,21 @@ export default function SignInPage() {
         <LetsMeetLogo size={52} className="mb-5" />
         <h1 className="screen-title">Welcome Back!</h1>
         <p className="screen-subtitle mb-8">Your LetsMeet dating adventure awaits</p>
+
+        {showRegisteredBanner && (
+          <div className="mb-5">
+            <InlineNotice kicker="You're registered" tone="info">
+              Registration successful. Sign in with your phone and PIN to continue.
+            </InlineNotice>
+            <button
+              type="button"
+              onClick={() => setShowRegisteredBanner(false)}
+              className="mt-1 text-[12px] font-semibold text-primary"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <InputField
           label="Phone Number"
@@ -129,5 +150,19 @@ export default function SignInPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mobile-shell flex min-h-screen items-center justify-center">
+          <p className="text-sm text-muted">Loading…</p>
+        </div>
+      }
+    >
+      <SignInContent />
+    </Suspense>
   );
 }

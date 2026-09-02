@@ -37,7 +37,8 @@ export default function ProfileSetupPage() {
       setName(user.fullName ?? "");
       setPhone(user.phone ?? "");
       if (user.profileCompleted) {
-        router.replace("/home");
+        // Full setup already done — success screen logs out and sends to sign-in.
+        router.replace("/all-set");
         return;
       }
     }
@@ -51,7 +52,8 @@ export default function ProfileSetupPage() {
         if (cancelled) return;
         updateUser({ profileCompleted: true });
         clearDraft();
-        router.replace("/home");
+        // End of onboarding — all-set clears the temp signup session and sends user to sign-in.
+        router.replace("/all-set");
       }
     })();
     return () => {
