@@ -84,7 +84,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-urbanist antialiased bg-white">
+      <body className="font-urbanist antialiased">
         <ActiveCallProvider>
           <RouteLoader />
           <GlobalIncomingCall />

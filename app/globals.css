@@ -19,16 +19,48 @@
   --composer-h: 4rem;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+  --app-max-width: 100%;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --app-max-width: min(48rem, 100%);
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-max-width: min(56rem, 100%);
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --app-max-width: min(68rem, 100%);
+  }
+}
+
+html {
+  min-height: 100%;
 }
 
 body {
   font-family: "Urbanist", sans-serif;
-  background: #ffffff;
   color: #12151C;
-  max-width: 600px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   min-height: 100dvh;
   overflow-x: hidden;
+  background: #ffffff;
+}
+
+@media (min-width: 768px) {
+  body {
+    background:
+      radial-gradient(ellipse 70% 48% at 8% -10%, rgba(247, 89, 245, 0.22), transparent 52%),
+      radial-gradient(ellipse 55% 40% at 100% 110%, rgba(181, 23, 158, 0.16), transparent 48%),
+      linear-gradient(180deg, #fff5fb 0%, #f3eaf4 100%);
+  }
 }
 
 input[type=number]::-webkit-outer-spin-button,
@@ -189,9 +221,17 @@ input[type=number] {
 }
 
 @layer components {
-  /* Mobile shell — centered, max 600px */
+  /* App shell — full-bleed on phones, wider centered column on desktop */
   .mobile-shell {
-    @apply max-w-mobile mx-auto min-h-dvh relative overflow-x-hidden page-surface;
+    @apply w-full max-w-mobile mx-auto min-h-dvh relative overflow-x-hidden page-surface;
+  }
+  @media (min-width: 768px) {
+    .mobile-shell {
+      min-height: 100dvh;
+      box-shadow:
+        0 0 0 1px rgba(247, 89, 245, 0.08),
+        0 28px 80px -24px rgba(18, 21, 28, 0.18);
+    }
   }
   /* Horizontal screen padding */
   .px-screen {

@@ -23,7 +23,7 @@ const config: Config = {
         surface: "#FBF7FC",
       },
       maxWidth: {
-        mobile: "600px",
+        mobile: "var(--app-max-width)",
       },
       boxShadow: {
         header: "0 8px 28px -10px rgba(62,54,237,0.12)",

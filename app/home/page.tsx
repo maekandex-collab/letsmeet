@@ -346,7 +346,7 @@ export default function HomePage() {
         )}
 
         <div
-          className="relative mx-auto w-full max-w-[430px] flex-1 min-h-[220px] max-h-[min(460px,42dvh)] shrink-0 overflow-hidden touch-none"
+          className="relative mx-auto w-full max-w-[430px] md:max-w-[520px] lg:max-w-[580px] xl:max-w-[640px] flex-1 min-h-[280px] max-h-[min(520px,48dvh)] md:max-h-[min(640px,60dvh)] lg:max-h-[min(720px,66dvh)] shrink-0 overflow-hidden touch-none"
           style={{ touchAction: "none" }}
         >
           {loading && (
